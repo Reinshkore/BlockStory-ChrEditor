@@ -1,0 +1,19 @@
+# Block Story Character Save Editor — runtime dependencies
+#
+# Python 3.12+ recommended (developed and tested on Python 3.14).
+# Install:  python -m pip install -r requirements.txt
+#
+# Streamlit drives the UI; pandas/plotly back the overview charts;
+# UnityPy is used to read item, mob and quest data from the local game install.
+
+streamlit==1.67.0
+pandas==3.1.1
+plotly==7.1.0
+UnityPy==1.25.4
+streamlit-sortables==0.3.1
+TypeTreeGeneratorAPI==0.0.10
+
+# 以下由 streamlit 自动带入，列出以便复现环境
+altair==6.3.0
+numpy==2.5.4
+pyarrow==26.0.1

@@ -136,3 +136,26 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# ── Block Story Character Save Editor ──────────────────────────────────────
+# Local runtime environment (recreated by start.bat on first run)
+.venv/
+# Derived data: item/mob/quest catalog extracted from the local game install
+.cache/
+# Local UI preferences
+save_editor_settings.json
+# Personal saves, automatic backups and user labels — never publish these
+*.chr
+*.bak_*
+labels/
+samples/
+# Streamlit secrets, local notes and logs
+.streamlit/secrets.toml
+.workbuddy/
+*.log
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+

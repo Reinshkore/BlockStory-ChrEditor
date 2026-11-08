@@ -1,0 +1,16 @@
+# Normalise line endings in the repository, keep Windows scripts usable on checkout.
+* text=auto
+
+*.py   text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.txt  text eol=lf
+*.bat  text eol=crlf
+
+# Binary-ish files that should never be converted.
+*.chr    binary
+*.assets binary
+*.png    binary
+*.ico    binary
+*.zip    binary
