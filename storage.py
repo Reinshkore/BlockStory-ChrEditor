@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import bsjson
+import schema
 import validate as _validate
 from model import SaveDoc
 
@@ -89,6 +90,16 @@ def list_saves(directory: Path | None = None) -> list[SaveInfo]:
             info.keys = len(parsed.entries)
             info.character = str(data.get("charName") or path.stem)
             level = data.get("Current Level")
+            if not isinstance(level, int):
+                # 仅某个模式有数据时，等级只存在于带后缀的键里。
+                for mode in schema.WORLD_MODES:
+                    suffix = schema.WORLD_MODE_SUFFIX.get(mode, "")
+                    if not suffix:
+                        continue
+                    candidate = data.get(f"Current Level{suffix}")
+                    if isinstance(candidate, int):
+                        level = candidate
+                        break
             info.level = level if isinstance(level, int) else None
             info.gender = str(data.get("charGender") or "")
         except (bsjson.SaveParseError, UnicodeDecodeError, OSError) as exc:

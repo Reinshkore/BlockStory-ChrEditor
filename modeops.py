@@ -53,6 +53,23 @@ def counts(doc: SaveDoc) -> dict[str, int]:
     return {mode: len(data_keys(doc, mode)) for mode in schema.WORLD_MODES}
 
 
+def suggest_mode(doc: SaveDoc, current: str) -> str | None:
+    """当前模式没有数据时，给出一个更适合展示的模式。
+
+    优先剧情模式；否则选数据键最多的模式。当前模式本身有数据时返回 None，
+    避免用户手动选择的空模式在每次载入时被强行改掉。
+    """
+    tally = counts(doc)
+    if tally.get(current):
+        return None
+    populated = [mode for mode in schema.WORLD_MODES if tally.get(mode)]
+    if not populated:
+        return None
+    if tally.get("story"):
+        return "story"
+    return max(populated, key=lambda mode: tally[mode])
+
+
 def _changes(before: dict[str, Any], after: dict[str, Any]) -> list[Change]:
     out = []
     for key, value in after.items():

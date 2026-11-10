@@ -17,6 +17,7 @@ import streamlit as st  # noqa: E402
 import filepick  # noqa: E402
 import gamedata  # noqa: E402
 import i18n  # noqa: E402
+import modeops  # noqa: E402
 import modeview  # noqa: E402
 import schema  # noqa: E402
 import storage  # noqa: E402
@@ -55,6 +56,7 @@ def init_state() -> None:
     ss.setdefault("slot_target", None)
     ss.setdefault("loaded_once", False)
     ss.setdefault("pending_load", None)
+    ss.setdefault("pending_mode", None)
 
     # 支持 ?page=fields&lang=zh 直达，便于分享与自动化截图
     if not ss.loaded_once:
@@ -103,6 +105,17 @@ def _install_doc(doc, path: Path | None, label: str) -> None:
     st.session_state.item_move_source = None
     st.session_state.editable = False
     st.session_state.pending_load = None
+    # 只在载入时建议模式；模式控件已经创建，必须等到下一次 rerun 前再赋值。
+    suggestion = modeops.suggest_mode(doc, st.session_state.mode)
+    if suggestion:
+        st.session_state.pending_mode = suggestion
+
+
+def _apply_pending_mode() -> None:
+    ss = st.session_state
+    mode = ss.pop("pending_mode", None)
+    if mode in schema.WORLD_MODES:
+        ss.mode = mode
 
 
 def current_issues(doc):
@@ -319,6 +332,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     init_state()
+    _apply_pending_mode()
     if st.session_state.get("active_nav") != st.session_state.nav:
         # 不论通过侧栏、直达链接还是浏览器导航，进入 Items 都不恢复旧弹窗。
         items.close_transients(st.session_state)

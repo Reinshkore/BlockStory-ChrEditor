@@ -142,14 +142,23 @@ def test_apply_keeps_parseable() -> None:
 # --------------------------------------------------------------------------- #
 
 def test_skill_formula() -> None:
-    check("1 级总量 6", schema.total_skill_points(1, 0) == 6)
-    check("10 级总量 15", schema.total_skill_points(10, 0) == 15)
-    check("29 级总量 53", schema.total_skill_points(29, 0) == 53)
-    check("69 级总量 173", schema.total_skill_points(69, 0) == 173,
-          str(schema.total_skill_points(69, 0)))
-    check("69 级 + 100 已购 = 273", schema.total_skill_points(69, 100) == 273)
-    check("199 级含 +20", schema.total_skill_points(199, 0) ==
-          schema.total_skill_points(198, 0) + 20)
+    check("自然升级 1 级总量 6", schema.earned_skill_points(1, 0) == 6)
+    check("自然升级 10 级总量 15", schema.earned_skill_points(10, 0) == 15)
+    check("自然升级 29 级总量 53", schema.earned_skill_points(29, 0) == 53)
+    check("自然升级 63 级总量 151", schema.earned_skill_points(63, 0) == 151,
+          str(schema.earned_skill_points(63, 0)))
+    check("63 级 + 300 已购 = 451", schema.earned_skill_points(63, 300) == 451)
+    check("自然升级 69 级总量 163", schema.earned_skill_points(69, 0) == 163,
+          str(schema.earned_skill_points(69, 0)))
+    check("自然升级 199 级总量 343", schema.earned_skill_points(199, 0) == 343)
+    check("已购点数直接相加", schema.earned_skill_points(69, 100) == 263)
+
+    check("重置公式 63 级 155", schema.reset_skill_points(63, 0) == 155)
+    check("63 级 + 300 已购 = 455", schema.reset_skill_points(63, 300) == 455)
+    check("重置公式 69 级 173", schema.reset_skill_points(69, 0) == 173,
+          str(schema.reset_skill_points(69, 0)))
+    check("重置公式 199 级含 +20", schema.reset_skill_points(199, 0) ==
+          schema.reset_skill_points(198, 0) + 20)
 
 
 def test_reset_level() -> None:

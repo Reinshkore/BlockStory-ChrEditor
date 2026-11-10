@@ -162,19 +162,26 @@ def _check_growth(doc: SaveDoc) -> list[Issue]:
                              {"value": exp, "cap": cap, "level": level}))
 
     if isinstance(level, int) and isinstance(purchased, int) and isinstance(skill, int):
-        total = schema.total_skill_points(level, purchased)
-        if skill > total:
+        earned = schema.earned_skill_points(level, purchased)
+        after_reset = schema.reset_skill_points(level, purchased)
+        ceiling = max(earned, after_reset)
+        if skill > ceiling:
             out.append(Issue("W_POINTS_OVER", WARN, "Skill Points",
                              doc.line_of("Skill Points"),
-                             {"value": skill, "total": total}))
+                             {"value": skill, "total": ceiling}))
         invested, _ = schema.invested_points(doc.values)
-        expected = total - skill
-        diff = invested - expected
+        # 自然升级与“技能重置”是两套合法总量；实际账面等于其一就不算异常。
+        actual = int(invested) + skill
+        nearest = min((earned, after_reset), key=lambda total: abs(actual - total))
+        expected = nearest - skill
+        diff = int(invested) - expected
         if abs(diff) >= 1:
             out.append(Issue("W_POINTS_MISMATCH", WARN, "Skill Points",
                              doc.line_of("Skill Points"),
                              {"invested": int(invested), "expected": int(expected),
-                              "diff": int(diff), "total": total, "unspent": skill}))
+                              "diff": int(diff), "total": int(nearest),
+                              "earned": int(earned), "after_reset": int(after_reset),
+                              "unspent": skill}))
     return out
 
 

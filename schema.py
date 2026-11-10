@@ -188,8 +188,8 @@ FIXED: dict[str, FieldSpec] = {
                                 note_en="XP inside the current level; resets on level-up",
                                 note_zh="当前等级内的经验，升级时递减"),
     "Skill Points": _spec("growth", "int", "Unspent skill points", "未分配技能点", 5, 0, None, core=True,
-                          note_en="Total = 5 + level tiers + purchased",
-                          note_zh="总量 = 5 + 等级档位 + 已购"),
+                          note_en="Total = 5 + level-up awards + purchased; a skill reset uses a higher legacy formula",
+                          note_zh="总量 = 5 + 升级发放 + 已购；技能重置按另一套更高公式结算"),
     "Purchased Skill Points": _spec("growth", "int", "Purchased skill points", "已购技能点", 0, 0, None, core=True,
                                     note_en="Only key shared across world modes",
                                     note_zh="唯一跨世界模式共享的键"),
@@ -205,6 +205,9 @@ FIXED: dict[str, FieldSpec] = {
     "InventoryUpdate": _spec("misc", "int", "Item migration flag", "物品迁移标记", 0),
     "JustStarted": _spec("misc", "int", "First-run flag", "首次进入标记", 0),
     "Has Killed Dragon Lord?": _spec("misc", "str", "Dragon Lord defeated", "是否击杀龙王", ""),
+    "Sandbox Hardmode Switch?": _spec("misc", "str", "Sandbox hard mode", "沙盒硬核模式", "no",
+                                      note_en="yes / no; sandbox mode only",
+                                      note_zh="yes / no，仅沙盒模式"),
     "RightHand": _spec("misc", "int", "Right hand slot", "右手槽位", -1, -1, 63,
                        note_en="Absolute slot index, -1 = empty", note_zh="绝对槽位号，-1 表示空手"),
     "LeftHand": _spec("misc", "int", "Left hand slot", "左手槽位", -1, -1, 63,
@@ -460,8 +463,37 @@ def kind_for(key: str, pets: Iterable[str] = ()) -> str | None:
 # 数值语义
 # --------------------------------------------------------------------------- #
 
-def total_skill_points(level: int, purchased: int, max_level: int = MAX_LEVEL) -> int:
-    """复刻 StatsCollector.CalculateSkillPoints。"""
+def earned_skill_points(level: int, purchased: int, max_level: int = MAX_LEVEL) -> int:
+    """自然升级实际发放的技能点总量。
+
+    复刻 Experience.AddjustCurrentExperience：每升一级按“升级前等级”发放，
+    在 10/30/60/100 级换档。它与 StatsCollector.CalculateSkillPoints 并不一致，
+    后者只在“技能重置”时使用，且 30 级以后会算得更多。
+    """
+    total = 5
+    level = max(0, min(int(level), max_level))
+    for old in range(level):
+        if old < 10:
+            total += 1
+        elif old < 30:
+            total += 2
+        elif old < 60:
+            total += 3
+        elif old < 100:
+            total += 2
+        elif old < max_level - 1:
+            total += 1
+        elif old < max_level:
+            total += 20
+    return total + int(purchased)
+
+
+def reset_skill_points(level: int, purchased: int, max_level: int = MAX_LEVEL) -> int:
+    """技能重置后的理论总额（StatsCollector.CalculateSkillPoints）。
+
+    ResetSkillsPurchase 会把未分配点数直接设为该值，因此重置过的存档可以合法
+    高于自然升级总量。校验时两种总额都要接受。
+    """
     total = 5
     level = max(0, min(int(level), max_level))
     for i in range(1, level + 1):

@@ -92,7 +92,7 @@ for %f in (tests\test_*.py) do .venv\Scripts\python.exe %f
 ```
 
 The one test that inspects a real game installation skips itself when the game is absent.
-Current status: 7 test files, 273 assertions.
+Current status: 8 test files, 297 assertions.
 
 ## Project layout
 

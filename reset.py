@@ -117,7 +117,7 @@ def _purchased_of(work: dict[str, Any]) -> int:
 def _do_level(work: dict[str, Any], skill_mode: str, notes) -> dict[str, Any]:
     purchased = _purchased_of(work)
     invested, _ = schema.invested_points(work)
-    total_after = schema.total_skill_points(1, purchased)
+    total_after = schema.earned_skill_points(1, purchased)
     raw_unspent = total_after - int(invested)
     stored = raw_unspent if skill_mode == SKILL_RAW else max(0, raw_unspent)
 
@@ -138,7 +138,7 @@ def _do_attributes(work: dict[str, Any], notes) -> dict[str, Any]:
     purchased = _purchased_of(work)
     for attr in schema.POINT_ATTRIBUTES:
         _set(work, attr.key, float(attr.default))
-    total = schema.total_skill_points(level, purchased)
+    total = schema.reset_skill_points(level, purchased)
     _set(work, "Skill Points", total)
 
     clamped = []
@@ -244,22 +244,31 @@ def apply_plan(doc: SaveDoc, plan: ResetPlan) -> None:
 # --------------------------------------------------------------------------- #
 
 def skill_snapshot(values: dict[str, Any]) -> dict[str, Any]:
-    """当前技能点账面：总量、未分配、反算已投入、差额。"""
+    """当前技能点账面：总量、未分配、反算已投入、差额。
+
+    自然升级与技能重置使用两套不同的总量公式，取与实际账面最接近的一套展示。
+    """
     level = values.get("Current Level", 0)
     purchased = values.get("Purchased Skill Points", 0)
     unspent = values.get("Skill Points", 0)
     level = level if isinstance(level, int) else 0
     purchased = purchased if isinstance(purchased, int) else 0
     unspent = unspent if isinstance(unspent, int) else 0
-    total = schema.total_skill_points(level, purchased)
+    earned = schema.earned_skill_points(level, purchased)
+    after_reset = schema.reset_skill_points(level, purchased)
     invested, per_attr = schema.invested_points(values)
+    actual = int(invested) + unspent
+    total = min((earned, after_reset), key=lambda value: abs(actual - value))
     return {
         "level": level,
         "purchased": purchased,
         "total": total,
+        "earned": earned,
+        "after_reset": after_reset,
+        "actual": actual,
         "unspent": unspent,
         "spent": total - unspent,
         "invested": int(invested),
-        "diff": int(invested) - (total - unspent),
+        "diff": actual - total,
         "per_attr": per_attr,
     }

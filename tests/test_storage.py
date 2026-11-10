@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import glob
-import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -16,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import storage  # noqa: E402
 
 _failures: list[str] = []
-REAL = glob.glob(r"C:\Users\Administrator\AppData\LocalLow\Mindblocks\Block Story\characters\*.chr")
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -28,14 +25,12 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 
 def make_copy(tmp: Path) -> Path:
-    if REAL:
-        target = tmp / "characters" / "testchar.chr"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(REAL[0], target)
-        return target
+    # 固定使用合成样本：测试只验证写入链路，不应被本机当前存档的键集影响。
     target = tmp / "characters" / "testchar.chr"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text('{\n"charName":"Tester",\n"Current Level":1\n}', encoding="utf-8")
+    target.write_bytes(
+        ('{\n"charName":"Tester",\n"Current Level":1,\n'
+         '"Inventory_name_4":"Stone",\n"Inventory_count_4":5\n}').encode("utf-8"))
     return target
 
 
@@ -149,7 +144,7 @@ def test_labels(tmp: Path) -> None:
 
 
 def main() -> int:
-    print(f"真实存档：{REAL[0] if REAL else '未找到，使用合成样本'}")
+    print("样本：合成存档（不依赖本机存档）")
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         groups = [
