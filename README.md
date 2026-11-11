@@ -50,8 +50,8 @@ validation and automatic backups, then writes changes atomically.
 2. Install **Python 3.12+** from <https://www.python.org/downloads/>.
    Tick **Add python.exe to PATH** during installation.
 3. Double-click **`start.bat`** (or `启动.bat`).
-   - First run: creates `.venv`, installs the pinned packages, then opens
-     <http://localhost:8501>.
+   - First run: creates `.venv`, installs the pinned packages (roughly 150 MB; a slow
+     connection can take several minutes), then opens <http://localhost:8501>.
    - Later runs: starts in a few seconds.
 4. If Windows SmartScreen appears, choose **More info → Run anyway**. The launcher is a
    plain-text `.bat` file and can be inspected.
@@ -100,7 +100,8 @@ then set `PIP_NO_INDEX=1` and `PIP_FIND_LINKS=D:\path\to\wheels` before `start.b
 ### What the release package contains
 
 Included: runtime Python sources, `ui/`, `views/`, `locales/`, `.streamlit/config.toml`,
-`requirements.txt`, `bootstrap.py`, `start.bat` / `启动.bat`, `README.md`, `LICENSE`.
+`requirements.txt`, `bootstrap.py`, `start.bat` / `启动.bat`, `README.md`, `LICENSE`,
+`BUILD.txt` (build date and commit).
 
 Excluded: `.venv/`, `.cache/`, `tests/`, Git history, personal saves, labels, and any game
 assets. The catalog is rebuilt from the game installation on first use. Tests and development
@@ -206,7 +207,8 @@ MIT — see [LICENSE](LICENSE).
 2. 安装 **Python 3.12+**：<https://www.python.org/downloads/>，安装时勾选
    **Add python.exe to PATH**。
 3. 双击 **`start.bat`**（或 `启动.bat`）。
-   - 首次运行：创建 `.venv`、联网安装固定版本依赖，然后打开 <http://localhost:8501>。
+   - 首次运行：创建 `.venv`、联网安装固定版本依赖（约 150 MB，慢速网络可能需要几分钟），
+     然后打开 <http://localhost:8501>。
    - 以后运行：几秒内启动。
 4. 若出现 SmartScreen，选择“更多信息 → 仍要运行”。启动器是纯文本 `.bat`，可以直接查看。
 5. 在侧栏选择存档。编辑器默认只读，需手动开启编辑。
