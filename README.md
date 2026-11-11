@@ -37,21 +37,74 @@ validation and automatic backups, then writes changes atomically.
 | OS | Windows 10/11 (tested). The app is plain Python + Streamlit and can be started manually elsewhere. |
 | Game | Block Story from Steam, 14.x line, unencrypted `.chr` saves |
 | Python | 3.12 or newer (developed on 3.14) |
+| Disk | About 1 GB free for `.venv` and the local catalog cache |
+| Network | Required on first run to download the pinned dependencies |
 
-## Quick start
+## Run on a new PC (Windows)
 
-1. Clone or download this repository.
-2. Double-click **`start.bat`** (or `启动.bat`).
-3. The first run creates `.venv`, installs the pinned dependencies and opens
-   <http://localhost:8501>.
+### From the release RAR
 
-Manual start:
+1. Extract the **whole archive** to a writable folder, for example
+   `D:\Games\BlockStory-ChrEditor`. Do not run it from inside the RAR, and avoid
+   `C:\Program Files` — the launcher creates `.venv` next to itself.
+2. Install **Python 3.12+** from <https://www.python.org/downloads/>.
+   Tick **Add python.exe to PATH** during installation.
+3. Double-click **`start.bat`** (or `启动.bat`).
+   - First run: creates `.venv`, installs the pinned packages, then opens
+     <http://localhost:8501>.
+   - Later runs: starts in a few seconds.
+4. If Windows SmartScreen appears, choose **More info → Run anyway**. The launcher is a
+   plain-text `.bat` file and can be inspected.
+5. Pick your save in the sidebar. The editor opens saves read-only until you enable editing.
+
+The launcher checks every pinned package, not just Streamlit. If one is missing or has the
+wrong version, it runs `pip install -r requirements.txt` before starting.
+
+### From the source repository
+
+```bat
+git clone https://gitee.com/rainxinxy/BlockStory-ChrEditor.git
+cd BlockStory-ChrEditor
+start.bat
+```
+
+The same launcher and dependency check apply.
+
+### Manual start
 
 ```bat
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe -m streamlit run app.py
+.venv\Scripts\python.exe bootstrap.py
 ```
+
+`bootstrap.py --check` only verifies dependencies. `bootstrap.py --no-browser` starts the
+server without opening a browser.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `Python 3.12+ was not found` | Install Python 3.12+, tick “Add python.exe to PATH”, then reopen the folder. |
+| `The existing .venv uses Python older than 3.12, or it is broken` | Delete the `.venv` folder and run `start.bat` again. |
+| Dependency installation fails | Check the network/proxy, or retry with a mirror: `.venv\Scripts\python.exe -m pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/` |
+| Browser does not open | Read the URL printed in the console (`http://localhost:8501`, or the next free port) and open it manually. |
+| `Catalog unavailable` | Point the editor at the game data: `set BS_GAME_DATA_DIR=D:\Games\BlockStory\Block Story_Data` |
+| Save not listed | Use “Browse” or type the full path. A custom save folder can be set with `set BS_SAVE_DIR=D:\path\to\characters`. |
+| Antivirus blocks the `.bat` | Allow the extracted folder; the launcher only creates `.venv` and runs Python. |
+
+Offline installation: on a networked machine run
+`pip download -r requirements.txt -d wheels`, copy the `wheels` folder with the release,
+then set `PIP_NO_INDEX=1` and `PIP_FIND_LINKS=D:\path\to\wheels` before `start.bat`.
+
+### What the release package contains
+
+Included: runtime Python sources, `ui/`, `views/`, `locales/`, `.streamlit/config.toml`,
+`requirements.txt`, `bootstrap.py`, `start.bat` / `启动.bat`, `README.md`, `LICENSE`.
+
+Excluded: `.venv/`, `.cache/`, `tests/`, Git history, personal saves, labels, and any game
+assets. The catalog is rebuilt from the game installation on first use. Tests and development
+files live in the source repository.
 
 ### Finding the game data
 
@@ -85,20 +138,23 @@ Back up your own saves before the first real use, as you would with any save edi
 
 ## Tests
 
-The suite is dependency-light and does not need pytest:
+Tests are not included in the release RAR; run them from the source repository. The suite is
+dependency-light and does not need pytest:
 
 ```bat
 for %f in (tests\test_*.py) do .venv\Scripts\python.exe %f
 ```
 
 The one test that inspects a real game installation skips itself when the game is absent.
-Current status: 8 test files, 297 assertions.
+Current status: 9 test files, 300+ assertions. The real-save round-trip count varies with the
+number of local backups.
 
 ## Project layout
 
 | Path | Purpose |
 |---|---|
 | `app.py` | Entry point, sidebar, mode selector, page routing |
+| `bootstrap.py` | Dependency check, installation, free-port selection and server start |
 | `bsjson.py` | Order-preserving JSON reader/writer for the save format |
 | `model.py` | Save document, undo stack, dirty tracking |
 | `schema.py` | Key catalog, categories, slot and mode suffix parsing |
@@ -141,19 +197,50 @@ MIT — see [LICENSE](LICENSE).
 - **校验与保存**：校验闸门、差异预览、带时间戳备份、临时文件原子替换、回读自检；可在界面内还原备份。
 - **五种界面语言**：English、简体中文、Русский、Português (Brasil)、Español。
 
-### 快速开始
+### 在新电脑上运行（Windows）
 
-1. 克隆或下载本仓库。
-2. 双击 **`start.bat`**（或 `启动.bat`）。
-3. 首次运行会自动创建 `.venv`、安装依赖并打开 <http://localhost:8501>。
+**从发布包（RAR）**
 
-游戏不在默认 Steam 目录时，设置环境变量：
+1. 把压缩包**完整解压**到可写目录，例如 `D:\Games\BlockStory-ChrEditor`。
+   不要直接在压缩包内运行，也不要放进 `C:\Program Files`（启动器需要在该目录创建 `.venv`）。
+2. 安装 **Python 3.12+**：<https://www.python.org/downloads/>，安装时勾选
+   **Add python.exe to PATH**。
+3. 双击 **`start.bat`**（或 `启动.bat`）。
+   - 首次运行：创建 `.venv`、联网安装固定版本依赖，然后打开 <http://localhost:8501>。
+   - 以后运行：几秒内启动。
+4. 若出现 SmartScreen，选择“更多信息 → 仍要运行”。启动器是纯文本 `.bat`，可以直接查看。
+5. 在侧栏选择存档。编辑器默认只读，需手动开启编辑。
+
+启动器会逐项核对 `requirements.txt` 里的所有固定版本，缺包或版本不符才会执行安装；
+8501 被占用时会自动选择下一个空闲端口，并在控制台打印实际地址。
+
+**从源码**
 
 ```bat
-set BS_GAME_DATA_DIR=D:\Games\BlockStory\Block Story_Data
+git clone https://gitee.com/rainxinxy/BlockStory-ChrEditor.git
+cd BlockStory-ChrEditor
+start.bat
 ```
 
-存档位置：`%USERPROFILE%\AppData\LocalLow\Mindblocks\Block Story\characters\*.chr`
+**常见问题**
+
+| 现象 | 处理 |
+|---|---|
+| 提示 `Python 3.12+ was not found` | 安装 Python 3.12+，勾选 PATH，重新打开文件夹。 |
+| 提示 `.venv` 版本过旧或损坏 | 删除 `.venv` 文件夹，重新运行 `start.bat`。 |
+| 依赖安装失败 | 检查网络/代理，或使用镜像：`.venv\Scripts\python.exe -m pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/` |
+| 浏览器没有自动打开 | 复制控制台打印的地址（`http://localhost:8501` 或下一个端口）手动打开。 |
+| 提示 `Catalog unavailable` | 设置 `set BS_GAME_DATA_DIR=D:\Games\BlockStory\Block Story_Data` |
+| 存档列表里没有目标存档 | 用“浏览”选择文件；也可用 `set BS_SAVE_DIR=D:\path\to\characters` 指定目录。 |
+
+离线安装：在有网的机器执行 `pip download -r requirements.txt -d wheels`，把 `wheels`
+目录随发布包一起拷贝，运行前设置 `PIP_NO_INDEX=1` 和 `PIP_FIND_LINKS=D:\path\to\wheels`。
+
+发布包只含运行所需文件，不含 `.venv`、`.cache`、测试、Git 历史、个人存档或游戏资源；
+物品目录会在首次运行时从本机游戏文件重建。
+
+游戏目录通常会自动探测；不在默认 Steam 目录时，按上表设置 `BS_GAME_DATA_DIR`。
+存档位置：`%USERPROFILE%\AppData\LocalLow\Mindblocks\Block Story\characters\*.chr`。
 编辑器只读取你主动打开的存档，不会修改游戏安装目录。
 
 ### 安全约定
