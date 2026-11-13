@@ -313,6 +313,7 @@ STRINGS = {
     "q.applySide": "Aplicar esta missão",
 
     "q.chain.mode": "Operação",
+    "q.chain.status": "Estado",
     "q.chain.complete": "Concluir até este nó",
     "q.chain.reset": "Redefinir este nó e seus descendentes",
     "q.chain.node": "Nó",

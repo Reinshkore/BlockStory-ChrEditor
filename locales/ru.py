@@ -324,6 +324,7 @@ STRINGS = {
 
     # Цепочки заданий
     "q.chain.mode": "Операция",
+    "q.chain.status": "Состояние",
     "q.chain.complete": "Завершить до этого узла",
     "q.chain.reset": "Сбросить этот узел и его потомков",
     "q.chain.node": "Узел",

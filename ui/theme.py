@@ -125,6 +125,16 @@ CSS = """
   .bs-mono{font-family:var(--bs-mono);font-size:12px}
   .bs-hr{height:1px;background:var(--bs-line);margin:10px 0}
   .bs-cat{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--bs-muted);margin:14px 0 5px}
+  /* 任务链：任务名是可点按钮，其余列是纯文本，点它们不会产生选中效果 */
+  .st-key-q_chain_list [data-testid="stVerticalBlock"]{gap:0}
+  .st-key-q_chain_list [data-testid="stHorizontalBlock"]{gap:.3rem;align-items:center;min-height:1.45rem}
+  .st-key-q_chain_list [data-testid="stElementContainer"]{margin:0}
+  .st-key-q_chain_list button{min-height:1.45rem!important;height:1.45rem;padding:0 .3rem!important;
+    font-size:12.5px;font-weight:400;line-height:1.45rem}
+  .st-key-q_chain_list button[kind="primary"]{font-weight:600}
+  .bs-chain-head{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--bs-muted)}
+  .bs-chain-cell{font-size:12.5px;color:var(--bs-muted);line-height:1.45rem;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
   .bs-warnbox{border:1px solid rgba(245,165,36,.35);background:rgba(245,165,36,.08);
     border-radius:10px;padding:10px 12px;font-size:12.3px;line-height:1.6}
   .bs-errbox{border:1px solid rgba(229,72,77,.4);background:rgba(229,72,77,.1);

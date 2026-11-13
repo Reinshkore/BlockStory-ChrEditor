@@ -358,6 +358,7 @@ S: dict[str, tuple[str, str]] = {
 
     # ── 任务链
     "q.chain.mode": ("Operation", "操作"),
+    "q.chain.status": ("State", "状态"),
     "q.chain.complete": ("Complete up to this node", "完成到该节点"),
     "q.chain.reset": ("Reset this node and its descendants", "重置该节点及其后代"),
     "q.chain.node": ("Node", "节点"),

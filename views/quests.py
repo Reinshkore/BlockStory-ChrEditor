@@ -302,32 +302,45 @@ def _chain(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
     if not forest.defs:
         st.caption(t("c.none_yet"))
         return
-    rows = []
-    for title in forest.order:
-        quest = forest.defs[title]
-        step = doc.get(schema.quest_key("old", "quest", title), "#start")
-        indent = "　" * forest.depth[title] + ("↳ " if forest.depth[title] else "")
-        rows.append({t("q.quest"): indent + questops.quest_name(quest, lang()),
-                     t("q.npc"): quest.npc,
-                     t("q.step"): display_value(step),
-                     "": t(f"q.{_quest_state(step)}")})
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
-                 height=min(90 + 26 * len(rows), 460))
+
+    selected = st.session_state.get("q_chain_node")
+    if selected not in forest.defs:
+        selected = forest.order[0]
 
     labels = {}
     for title in forest.order:
         indent = "　" * forest.depth[title] + ("↳ " if forest.depth[title] else "")
         labels[title] = indent + questops.quest_name(forest.defs[title], lang())
-    choice = st.selectbox(t("q.chain.node"), list(labels.values()),
-                          key=f"q_chain_node_{doc.widget_id}")
-    node = next((key for key, value in labels.items() if value == choice),
-                forest.order[0])
+
+    widths = [3.6, 1.2, 1.4, 0.9]
+    head = st.columns(widths, vertical_alignment="center")
+    for col, label in zip(head, (t("q.quest"), t("q.npc"), t("q.step"), t("q.chain.status"))):
+        col.markdown(f'<div class="bs-chain-head">{label}</div>', unsafe_allow_html=True)
+
+    with st.container(key="q_chain_list"):
+        for title in forest.order:
+            quest = forest.defs[title]
+            step = doc.get(schema.quest_key("old", "quest", title), "#start")
+            c1, c2, c3, c4 = st.columns(widths, vertical_alignment="center")
+            if c1.button(labels[title], key=f"q_chain_pick_{doc.widget_id}_{title}",
+                         type="primary" if title == selected else "tertiary"):
+                st.session_state["q_chain_node"] = title
+                st.rerun()
+            c2.markdown(f'<div class="bs-chain-cell">{quest.npc}</div>', unsafe_allow_html=True)
+            c3.markdown(f'<div class="bs-chain-cell">{display_value(step)}</div>',
+                        unsafe_allow_html=True)
+            c4.markdown(theme.badge(t(f"q.{_quest_state(step)}"),
+                                    "ok" if _quest_state(step) == "done"
+                                    else "warn" if _quest_state(step) == "active" else "mute"),
+                        unsafe_allow_html=True)
+
+    st.caption(f"{t('q.chain.node')}: {labels[selected]}")
     mode = st.segmented_control(
         t("q.chain.mode"), ["complete", "reset"], default="complete",
         format_func=lambda m: t(f"q.chain.{m}"),
         key=f"q_chain_mode_{doc.widget_id}")
     mode = mode or "complete"
-    plan = questops.build_chain_plan(doc, forest, node, mode)
+    plan = questops.build_chain_plan(doc, forest, selected, mode)
     affected = plan.metrics.get("quests", [])
     st.caption(t("q.chain.affected", n=len(affected), names=", ".join(affected[:6])))
     st.caption(t("q.planCounts", add=plan.added, mod=plan.modified, rem=plan.removed))

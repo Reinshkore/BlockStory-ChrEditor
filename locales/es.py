@@ -323,6 +323,7 @@ STRINGS = {
 
     # Cadenas de misiones
     "q.chain.mode": "Operación",
+    "q.chain.status": "Estado",
     "q.chain.complete": "Completar hasta este nodo",
     "q.chain.reset": "Restablecer este nodo y sus descendientes",
     "q.chain.node": "Nodo",
