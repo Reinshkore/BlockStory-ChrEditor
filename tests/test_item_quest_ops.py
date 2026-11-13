@@ -33,9 +33,9 @@ def _doc() -> model.SaveDoc:
         "Drako_data_0": 0, "Drako_paint_0": 0,
         "Quest: Tutorial": "#end",
         "Quest: A": "old",
-        "Quest: A kill 2": 4,
-        "Quest: A Player consume Food": 1,
-        "Quest: A placed 12 0": 3,
+        "Quest: A hunt kill 2": 4,
+        "Quest: A hunt Player consume Food": 1,
+        "Quest: A hunt placed 12 0": 3,
         "Quest Complete: Daily": 4,
         "Daily: Daily": "2026-01-01",
     })
@@ -129,7 +129,7 @@ def test_quests() -> None:
     check("阶段之前的任务完成", plan.values["Quest: A"] == "#end")
     check("当前任务到指定步骤", plan.values["Quest: B"] == "#start")
     check("未来任务未开始", plan.values["Quest: The Grand Finale"] == "#start")
-    check("旧进度被清理", "Quest: A kill 2" not in plan.values)
+    check("旧进度被清理", "Quest: A hunt kill 2" not in plan.values)
     questops.apply_plan(doc, plan)
     check("任务计划可撤销", doc.undo() is not None and doc.get("Quest: A") == "old")
     questops.apply_plan(doc, questops.build_side_plan(doc, catalog.quests["B"], "complete"))

@@ -157,7 +157,9 @@ def _do_quests(work: dict[str, Any], notes,
     removed = _drop_prefix(work, ("Quest: ", "Quest Complete: ", "Daily: ",
                                   "Old Quest: ", "Old Quest Complete: ", "Old Daily: "))
     notes.append(("rs.note.quests", {"count": len(removed)}))
-    recipe_keys = [f"Recipe: {name}" for name in recipe_names]
+    # 任务键两套前缀都清，配方也要两套都清：旧线解锁写在 Old Recipe: 下。
+    recipe_keys = [f"{prefix}{name}" for name in recipe_names
+                   for prefix in ("Recipe: ", "Old Recipe: ")]
     recipes_removed = sum(work.pop(key, None) is not None for key in recipe_keys)
     if recipe_names:
         notes.append(("rs.note.questRecipes", {"count": recipes_removed}))
@@ -179,7 +181,7 @@ def _do_pets(work: dict[str, Any], notes) -> dict[str, Any]:
 
 
 def _do_clear_progress(work: dict[str, Any], notes) -> dict[str, Any]:
-    removed = _drop_prefix(work, ("Achieve: ", "Recipe: "))
+    removed = _drop_prefix(work, ("Achieve: ", "Recipe: ", "Old Recipe: "))
     notes.append(("rs.note.progress", {"count": len(removed)}))
     return {"removed": len(removed)}
 

@@ -103,7 +103,10 @@ def test_roundtrip_real_saves() -> None:
         print("  skip 未找到真实存档，跳过往返测试")
         return
     for path in files:
-        raw = Path(path).read_text(encoding="utf-8")
+        raw = Path(path).read_text(encoding="utf-8", errors="replace")
+        if not raw.lstrip().startswith("{"):
+            print(f"  skip {Path(path).name} 非明文存档")
+            continue
         res = bsjson.loads(raw)
         out = bsjson.dumps_entries(res.entries)
         check(f"往返一致 {Path(path).name}", out == raw,

@@ -102,6 +102,7 @@ def validate(doc: SaveDoc, catalog=None) -> list[Issue]:
     issues.extend(_check_identity(doc))
     issues.extend(_check_dates(doc))
     issues.extend(_check_quest_catalog(doc, catalog))
+    issues.extend(_check_questline(doc))
 
     issues.sort(key=Issue.sort_key)
     return issues
@@ -110,32 +111,55 @@ def validate(doc: SaveDoc, catalog=None) -> list[Issue]:
 # --------------------------------------------------------------------------- #
 
 def _check_quest_catalog(doc: SaveDoc, catalog) -> list[Issue]:
-    """可选的当前版本任务一致性检查；旧任务线与自定义任务不算错误。"""
+    """任务一致性检查：当前线与旧线分别对各自的目录核对，自定义任务不算错误。"""
     if catalog is None or catalog.error:
         return []
     out: list[Issue] = []
     for key in doc.order:
-        if not key.startswith("Quest: "):
+        if key.startswith("Old Quest: "):
+            prefix, line = "Old Quest: ", "old"
+        elif key.startswith("Quest: "):
+            prefix, line = "Quest: ", "current"
+        else:
             continue
-        rest = schema.mode_base_key(key[len("Quest: "):])
+        rest = schema.mode_base_key(key[len(prefix):])
         progress = schema.QUEST_PROG_RE.match(rest)
         title = progress.group("title") if progress else rest
-        quest = catalog.quests.get(title)
-        line = doc.line_of(key)
+        quest = catalog.for_line(line).get(title)
+        at = doc.line_of(key)
         if progress:
             if quest is None:
-                out.append(Issue("I_PROGRESS_CUSTOM", INFO, key, line, {"title": title}))
+                out.append(Issue("I_PROGRESS_CUSTOM", INFO, key, at, {"title": title}))
             elif progress.group("step") not in quest.steps:
-                out.append(Issue("I_PROGRESS_STEP", INFO, key, line,
+                out.append(Issue("I_PROGRESS_STEP", INFO, key, at,
                                  {"title": title, "step": progress.group("step")}))
             elif " placed " not in rest and schema.mode_base_key(key) not in {x.key for x in quest.targets}:
-                out.append(Issue("I_PROGRESS_TARGET", INFO, key, line, {"title": title}))
+                out.append(Issue("I_PROGRESS_TARGET", INFO, key, at, {"title": title}))
         elif quest is None:
-            out.append(Issue("I_QUEST_CUSTOM", INFO, key, line, {"title": title}))
+            out.append(Issue("I_QUEST_CUSTOM", INFO, key, at, {"title": title}))
         elif value_is_invalid_step(doc.values[key], quest):
-            out.append(Issue("W_QUEST_STEP", WARN, key, line,
+            out.append(Issue("W_QUEST_STEP", WARN, key, at,
                              {"title": title, "step": str(doc.values[key])}))
     return out
+
+
+def _check_questline(doc: SaveDoc) -> list[Issue]:
+    """任务线设置与现存键族不一致时提示；游戏只加载当前任务线那套键。"""
+    line = schema.quest_line(doc.get(schema.QUEST_LINE_KEY, 0))
+    counts = {"current": 0, "old": 0}
+    current_prefixes = ("Quest: ", "Quest Complete: ", "Daily: ", "Recipe: ")
+    old_prefixes = ("Old Quest: ", "Old Quest Complete: ", "Old Daily: ", "Old Recipe: ")
+    for key in doc.order:
+        if key.startswith(old_prefixes):
+            counts["old"] += 1
+        elif key.startswith(current_prefixes):
+            counts["current"] += 1
+    other = "current" if line == "old" else "old"
+    if not counts[other]:
+        return []
+    return [Issue("I_QUESTLINE_EXTRA", INFO, schema.QUEST_LINE_KEY,
+                  doc.line_of(schema.QUEST_LINE_KEY),
+                  {"line": line, "other": other, "count": counts[other]})]
 
 
 def value_is_invalid_step(value: Any, quest) -> bool:

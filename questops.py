@@ -11,6 +11,7 @@ from typing import Any
 
 from gamedata import Catalog, QuestDef
 from model import Change, SaveDoc, kind_of
+import schema
 
 MAINLINE_END = "The Grand Finale"
 MAINLINE_START = "Tutorial"
@@ -82,10 +83,21 @@ def _is_done(step: Any) -> bool:
     return step in {"#end", "#end_dark_side"}
 
 
-def _clear_step_progress(work: dict[str, Any], title: str) -> None:
-    prefix = f"Quest: {title} "
-    for key in [k for k in work if k.startswith(prefix)]:
-        del work[key]
+def _clear_step_progress(work: dict[str, Any], title: str, line: str = "current") -> None:
+    """只删除该任务自己的步骤计数键。
+
+    不能只用 `f"Old Quest: {title} "` 做前缀：任务名可能互为前缀
+    （`Dancing Lessons` 与 `Dancing Lessons II`），那样会误删下一环的键。
+    """
+    head = f"{schema.quest_prefix(line)}Quest: {title}"
+    for key in list(work):
+        if key == head:
+            continue
+        if not key.startswith(head + " "):
+            continue
+        match = schema.QUEST_PROG_RE.match(key[len(schema.quest_prefix(line)) + len("Quest: "):])
+        if match and match.group("title") == title:
+            del work[key]
 
 
 def _put(work: dict[str, Any], key: str, value: Any) -> None:
@@ -192,20 +204,27 @@ def valid_steps(quest: QuestDef) -> list[str]:
     return steps
 
 
+def is_done(value: Any) -> bool:
+    """对外暴露的完成判定：供页面做前置检查。"""
+    return _is_done(value)
+
+
 def build_side_plan(doc: SaveDoc, quest: QuestDef, action: str,
                     ending: str = "#end") -> QuestPlan:
     if action not in {"complete", "reset"}:
         raise ValueError(action)
+    line = quest.line
     work = dict(doc.values)
-    key = f"Quest: {quest.title}"
-    _clear_step_progress(work, quest.title)
+    key = schema.quest_key(line, "quest", quest.title)
+    _clear_step_progress(work, quest.title, line)
     if action == "complete":
         _put(work, key, ending if ending in {"#end", "#end_dark_side"} else "#end")
     else:
         _put(work, key, "#start")
-        work.pop(f"Quest Complete: {quest.title}", None)
-        work.pop(f"Daily: {quest.title}", None)
-    return _make_plan(doc, work, f"side:{action}", {"title": quest.title, "action": action})
+        work.pop(schema.quest_key(line, "complete", quest.title), None)
+        work.pop(schema.quest_key(line, "daily", quest.title), None)
+    return _make_plan(doc, work, f"side:{action}", {"title": quest.title, "action": action,
+                                                    "line": line})
 
 
 def daily_slider_upper(current: int, tiers: tuple[int, ...]) -> int:
@@ -250,3 +269,152 @@ def apply_plan(doc: SaveDoc, plan: QuestPlan) -> None:
     doc.push_undo(f"quest:{plan.op}")
     doc.values = dict(plan.values)
     doc.reorder([key for key in plan.order if key in doc.values])
+
+
+# --------------------------------------------------------------------------- #
+# 任务线：当前 / 旧
+# --------------------------------------------------------------------------- #
+
+def active_questline(doc: SaveDoc) -> str:
+    return schema.quest_line(doc.get(schema.QUEST_LINE_KEY, 0))
+
+
+def line_stats(doc: SaveDoc, line: str) -> dict[str, int]:
+    rows = [row for row in doc.quests() if row["line"] == line]
+    done = sum(1 for row in rows if _is_done(row["step"]))
+    start = sum(1 for row in rows if row["step"] in {"#start", ""})
+    return {"total": len(rows), "done": done,
+            "active": len(rows) - done - start, "start": start}
+
+
+def line_key_counts(doc: SaveDoc) -> dict[str, int]:
+    """两套键族各自有多少键；用于切换任务线前的确认信息。"""
+    current = ("Quest: ", "Quest Complete: ", "Daily: ", "Recipe: ")
+    old = ("Old Quest: ", "Old Quest Complete: ", "Old Daily: ", "Old Recipe: ")
+    counts = {"current": 0, "old": 0}
+    for key in doc.order:
+        if key.startswith(old):
+            counts["old"] += 1
+        elif key.startswith(current):
+            counts["current"] += 1
+    return counts
+
+
+def editable_steps(quest: QuestDef) -> list[str]:
+    """可写步骤：#start、XML 声明的步骤与 #end。旧线不提供暗面结局。"""
+    steps = list(dict.fromkeys(quest.steps))
+    if "#end" not in steps:
+        steps.append("#end")
+    if quest.line != "old" and "#end_dark_side" not in steps:
+        steps.append("#end_dark_side")
+    return steps
+
+
+def step_targets(quest: QuestDef, step: str) -> list[tuple[str, int]]:
+    """某步骤的目标摘要，只读展示用：[(目标名, 数量)]。"""
+    return [(target.target, target.count) for target in quest.targets
+            if target.step == step]
+
+
+@dataclass
+class QuestForest:
+    defs: dict[str, QuestDef]
+    roots: list[str]
+    children: dict[str, list[str]]
+    parent: dict[str, str]
+    depth: dict[str, int]
+    order: list[str]
+
+    def path_to(self, title: str) -> list[str]:
+        chain: list[str] = []
+        seen: set[str] = set()
+        node = title
+        while node and node not in seen:
+            seen.add(node)
+            chain.append(node)
+            node = self.parent.get(node, "")
+        chain.reverse()
+        return chain
+
+    def subtree(self, title: str) -> list[str]:
+        out: list[str] = []
+        stack = [title]
+        while stack:
+            node = stack.pop()
+            out.append(node)
+            stack.extend(reversed(self.children.get(node, [])))
+        return out
+
+
+def old_forest(catalog: Catalog) -> QuestForest:
+    """旧任务线是单亲森林：4 个根、严格树形。商店任务不参与。"""
+    defs = {title: quest for title, quest in catalog.old_quests.items() if not quest.shop}
+    children: dict[str, list[str]] = {title: [] for title in defs}
+    parent: dict[str, str] = {}
+    roots: list[str] = []
+    for title, quest in defs.items():
+        linked = [dep for dep in quest.deps if dep in defs]
+        if linked:
+            parent[title] = linked[0]
+            children[linked[0]].append(title)
+        else:
+            roots.append(title)
+    for kids in children.values():
+        kids.sort(key=lambda t: (defs[t].source_order, t))
+    roots.sort(key=lambda t: (defs[t].source_order, t))
+
+    depth: dict[str, int] = {}
+    order: list[str] = []
+
+    def walk(title: str, level: int) -> None:
+        depth[title] = level
+        order.append(title)
+        for child in children[title]:
+            walk(child, level + 1)
+
+    for root in roots:
+        walk(root, 0)
+    for title in sorted(defs, key=lambda t: (defs[t].source_order, t)):
+        if title not in depth:      # 依赖成环等异常数据：当作根，避免丢节点
+            walk(title, 0)
+    return QuestForest(defs, roots, children, parent, depth, order)
+
+
+def build_quest_plan(doc: SaveDoc, quest: QuestDef, step: str) -> QuestPlan:
+    if step not in editable_steps(quest):
+        raise ValueError(f"invalid step: {step}")
+    work = dict(doc.values)
+    _clear_step_progress(work, quest.title, quest.line)
+    work[schema.quest_key(quest.line, "quest", quest.title)] = step
+    return _make_plan(doc, work, "quest", {"title": quest.title, "step": step,
+                                           "line": quest.line})
+
+
+def build_chain_plan(doc: SaveDoc, forest: QuestForest, node: str,
+                     mode: str) -> QuestPlan:
+    if mode not in {"complete", "reset"}:
+        raise ValueError(mode)
+    if node not in forest.defs:
+        raise ValueError(f"unknown quest: {node}")
+    titles = forest.path_to(node) if mode == "complete" else forest.subtree(node)
+    work = dict(doc.values)
+    for title in titles:
+        _clear_step_progress(work, title, "old")
+        if mode == "complete":
+            work[schema.quest_key("old", "quest", title)] = "#end"
+        else:
+            work[schema.quest_key("old", "quest", title)] = "#start"
+            work.pop(schema.quest_key("old", "complete", title), None)
+            work.pop(schema.quest_key("old", "daily", title), None)
+    return _make_plan(doc, work, f"chain:{mode}",
+                      {"node": node, "mode": mode, "quests": titles})
+
+
+def build_questline_plan(doc: SaveDoc, line: str) -> QuestPlan:
+    """切换任务线只写 Questline 一个键；切回当前线时，缺失键等价 0，不必补写。"""
+    work = dict(doc.values)
+    if line == "old":
+        work[schema.QUEST_LINE_KEY] = 1
+    elif schema.QUEST_LINE_KEY in work:
+        work[schema.QUEST_LINE_KEY] = 0
+    return _make_plan(doc, work, "questline", {"line": line})

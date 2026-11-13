@@ -11,7 +11,7 @@ import json
 import os
 import re
 import xml.etree.ElementTree as ET
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -117,6 +117,10 @@ class QuestDef:
     ru: str = ""
     pt: str = ""
     es: str = ""
+    #: "current" 或 "old"；旧任务线由 Resources/Quests/Old 加载，键名多一个 "Old " 前缀。
+    line: str = "current"
+    #: <store> 商店任务：以 #close 结束、不写存档，编辑器按只读处理。
+    shop: bool = False
 
 
 @dataclass
@@ -124,11 +128,16 @@ class Catalog:
     items: dict[str, Entry] = field(default_factory=dict)
     mobs: dict[str, Entry] = field(default_factory=dict)
     quests: dict[str, QuestDef] = field(default_factory=dict)
+    #: 旧任务线任务（resources.assets 的 Quests/Old + 商店任务），与当前线同名不同源。
+    old_quests: dict[str, QuestDef] = field(default_factory=dict)
     #: 当前与旧任务线的配方奖励全集：title -> recipe names。
     quest_recipes: dict[str, tuple[str, ...]] = field(default_factory=dict)
     source: str = ""
     error: str = ""
     version: str = ""
+
+    def for_line(self, line: str) -> dict[str, QuestDef]:
+        return self.old_quests if line == "old" else self.quests
 
     def is_spawner(self, item_id: str) -> bool:
         entry = self.items.get(item_id)
@@ -214,7 +223,7 @@ def _fingerprint(source: Path) -> dict[str, Any]:
                 digest.update(block)
         out.append({"name": name, "size": p.stat().st_size, "sha256": digest.hexdigest()})
     extractor = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    return {"parser": 8, "extractor": extractor, "files": out}
+    return {"parser": 9, "extractor": extractor, "files": out}
 
 
 def load_catalog(refresh: bool = False) -> Catalog:
@@ -255,23 +264,32 @@ def _to_payload(c: Catalog) -> dict[str, Any]:
                        "daily_tiers": list(v.daily_tiers), "recipes": list(v.recipes),
                        "targets": [asdict(x) for x in v.targets]}
                    for k, v in c.quests.items()},
+        "old_quests": {k: {**asdict(v), "deps": list(v.deps), "steps": list(v.steps),
+                           "daily_tiers": list(v.daily_tiers), "recipes": list(v.recipes),
+                           "targets": [asdict(x) for x in v.targets]}
+                       for k, v in c.old_quests.items()},
         "quest_recipes": {k: list(v) for k, v in c.quest_recipes.items()},
     }
+
+
+def _quest_from_payload(v: dict[str, Any]) -> QuestDef:
+    return QuestDef(title=v["title"], npc=v["npc"], daily=v["daily"],
+                    en=v.get("en", ""), zh=v.get("zh", ""),
+                    daily_tiers=tuple(v.get("daily_tiers", ())),
+                    deps=tuple(v.get("deps", ())), steps=tuple(v.get("steps", ())),
+                    targets=tuple(QuestTarget(**x) for x in v.get("targets", ())),
+                    recipes=tuple(v.get("recipes", ())),
+                    source_order=v.get("source_order", 0),
+                    ru=v.get("ru", ""), pt=v.get("pt", ""), es=v.get("es", ""),
+                    line=v.get("line", "current"), shop=v.get("shop", False))
 
 
 def _from_payload(p: dict[str, Any]) -> Catalog:
     return Catalog(
         items={k: Entry(**v) for k, v in p.get("items", {}).items()},
         mobs={k: Entry(**v) for k, v in p.get("mobs", {}).items()},
-        quests={k: QuestDef(title=v["title"], npc=v["npc"], daily=v["daily"],
-                            en=v.get("en", ""), zh=v.get("zh", ""),
-                            daily_tiers=tuple(v.get("daily_tiers", ())),
-                            deps=tuple(v.get("deps", ())), steps=tuple(v.get("steps", ())),
-                            targets=tuple(QuestTarget(**x) for x in v.get("targets", ())),
-                            recipes=tuple(v.get("recipes", ())),
-                            source_order=v.get("source_order", 0),
-                            ru=v.get("ru", ""), pt=v.get("pt", ""), es=v.get("es", ""))
-                for k, v in p.get("quests", {}).items()},
+        quests={k: _quest_from_payload(v) for k, v in p.get("quests", {}).items()},
+        old_quests={k: _quest_from_payload(v) for k, v in p.get("old_quests", {}).items()},
         quest_recipes={k: tuple(v) for k, v in p.get("quest_recipes", {}).items()},
         source=p.get("source", ""), version=p.get("version", ""),
     )
@@ -330,9 +348,11 @@ def _extract(source: Path) -> Catalog:
         raise FileNotFoundError(source / SOURCE_FILES[0])
     translations: dict[str, dict[str, dict[str, str]]] = {}
     quests: dict[str, QuestDef] = {}
+    old_quests: dict[str, QuestDef] = {}
     quest_recipes: dict[str, tuple[str, ...]] = {}
     version = ""
     order = 0
+    old_order = 0
     for filename in SOURCE_FILES:
         path = source / filename
         if not path.is_file():
@@ -355,25 +375,40 @@ def _extract(source: Path) -> Catalog:
                         if key and value:
                             target[key] = value
             elif stripped.startswith("<quest"):
-                quest = _parse_quest(stripped, order)
-                if quest:
-                    if quest.recipes:
-                        quest_recipes[quest.title] = tuple(dict.fromkeys(
-                            quest_recipes.get(quest.title, ()) + quest.recipes))
-                    if filename == "sharedassets2.assets":
-                        quests[quest.title] = quest
-                        order += 1
-    for title, quest in list(quests.items()):
-        sheet = translations.get(quest.npc, {})
-        quests[title] = QuestDef(
-            title=quest.title, npc=quest.npc, daily=quest.daily,
-            en=sheet.get("en", {}).get(title, title),
-            zh=sheet.get("zh_CN", {}).get(title, ""),
-            ru=sheet.get("ru", {}).get(title, ""),
-            pt=sheet.get("pt_BR", {}).get(title, ""),
-            es=sheet.get("es", {}).get(title, ""),
-            daily_tiers=quest.daily_tiers, deps=quest.deps, steps=quest.steps,
-            targets=quest.targets, recipes=quest.recipes, source_order=quest.source_order)
+                # resources.assets 是 Resources/Quests/Old：旧任务线；sharedassets2 是内置当前线。
+                line = "old" if filename == "resources.assets" else "current"
+                quest = _parse_quest(stripped, old_order if line == "old" else order, line)
+                if quest is None:
+                    continue
+                if "<store" in stripped:
+                    quest = replace(quest, shop=True)
+                if quest.recipes:
+                    quest_recipes[quest.title] = tuple(dict.fromkeys(
+                        quest_recipes.get(quest.title, ()) + quest.recipes))
+                if line == "old":
+                    old_quests[quest.title] = quest
+                    old_order += 1
+                else:
+                    quests[quest.title] = quest
+                    order += 1
+                    if quest.shop:
+                        # 游戏的 AddShopQuests 把 <store> 任务也以 "Old " 前缀加载到旧线。
+                        old_quests[quest.title] = replace(
+                            quest, line="old", source_order=old_order)
+                        old_order += 1
+    for group in (quests, old_quests):
+        for title, quest in list(group.items()):
+            sheet = translations.get(quest.npc, {})
+            group[title] = QuestDef(
+                title=quest.title, npc=quest.npc, daily=quest.daily,
+                en=sheet.get("en", {}).get(title, title),
+                zh=sheet.get("zh_CN", {}).get(title, ""),
+                ru=sheet.get("ru", {}).get(title, ""),
+                pt=sheet.get("pt_BR", {}).get(title, ""),
+                es=sheet.get("es", {}).get(title, ""),
+                daily_tiers=quest.daily_tiers, deps=quest.deps, steps=quest.steps,
+                targets=quest.targets, recipes=quest.recipes,
+                source_order=quest.source_order, line=quest.line, shop=quest.shop)
     item_defs = _extract_item_db(source)
     items: dict[str, Entry] = {}
     for item_id, definition in item_defs.items():
@@ -392,8 +427,8 @@ def _extract(source: Path) -> Catalog:
             return mob_sheets.get(code, {}).get(mob_id) or item_sheets.get(code, {}).get(mob_id) or ""
         mobs[mob_id] = Entry(mob_id, localized("en") or mob_id, localized("zh_CN"),
                              ru=localized("ru"), pt=localized("pt_BR"), es=localized("es"))
-    return Catalog(items=items, mobs=mobs, quests=quests, quest_recipes=quest_recipes,
-                   source=str(source), version=version)
+    return Catalog(items=items, mobs=mobs, quests=quests, old_quests=old_quests,
+                   quest_recipes=quest_recipes, source=str(source), version=version)
 
 
 def _extract_item_db(source: Path) -> dict[str, dict[str, Any]]:
@@ -443,7 +478,7 @@ def _option_actions(step: ET.Element):
             yield child
 
 
-def _parse_quest(text: str, order: int) -> QuestDef | None:
+def _parse_quest(text: str, order: int, line: str = "current") -> QuestDef | None:
     try:
         root = ET.fromstring(text)
     except ET.ParseError:
@@ -451,6 +486,7 @@ def _parse_quest(text: str, order: int) -> QuestDef | None:
     title = root.attrib.get("title", "").strip()
     if not title:
         return None
+    prefix = "Old " if line == "old" else ""
     steps = tuple(child.attrib.get("id", "") for child in root
                   if child.tag.endswith("step") and child.attrib.get("id"))
     targets: list[QuestTarget] = []
@@ -468,9 +504,9 @@ def _parse_quest(text: str, order: int) -> QuestDef | None:
                     saved_target = str(MOB_TYPES.index(target))
                 except ValueError:
                     continue
-                key = f"Quest: {title} {step_id} kill {saved_target}"
+                key = f"{prefix}Quest: {title} {step_id} kill {saved_target}"
             else:
-                key = f"Quest: {title} {step_id} {target} consume {child.attrib.get('item', 'Food')}"
+                key = f"{prefix}Quest: {title} {step_id} {target} consume {child.attrib.get('item', 'Food')}"
             targets.append(QuestTarget(step_id, child.tag, target, count, key))
     tiers: set[int] = set()
     for step in root:
@@ -489,7 +525,8 @@ def _parse_quest(text: str, order: int) -> QuestDef | None:
                     daily_tiers=tuple(sorted(tiers)),
                     deps=tuple(x.attrib["quest"] for x in root.findall("complete")
                                if x.attrib.get("quest")),
-                    steps=steps, targets=tuple(targets), recipes=recipes, source_order=order)
+                    steps=steps, targets=tuple(targets), recipes=recipes, source_order=order,
+                    line=line)
 
 
 def _as_int(raw: Any, default: int) -> int:

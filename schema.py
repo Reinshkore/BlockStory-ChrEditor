@@ -60,6 +60,27 @@ WORLD_MODE_SUFFIX = {
     "hardcore": "_hardcore", "sandbox": "_sandbox",
 }
 
+#: 任务线：Questline 枚举，0 = 当前，1 = 旧（游戏 9 版本以前的任务）。
+QUEST_LINE_KEY = "Questline"
+QUEST_LINES = ("current", "old")
+QUEST_LINE_SUFFIX = {"current": "", "old": "Old "}
+
+
+def quest_line(value: Any) -> str:
+    """把存档里的 Questline 值规范成 "current" / "old"；非法值按游戏默认处理。"""
+    return "old" if value == 1 else "current"
+
+
+def quest_prefix(line: str) -> str:
+    return QUEST_LINE_SUFFIX.get(line, "")
+
+
+def quest_key(line: str, kind: str, title: str) -> str:
+    """kind: quest / complete / daily / recipe。"""
+    base = {"quest": "Quest: ", "complete": "Quest Complete: ",
+            "daily": "Daily: ", "recipe": "Recipe: "}[kind]
+    return quest_prefix(line) + base + title
+
 
 def world_mode_of(key: str) -> str:
     for mode, suffix in WORLD_MODE_SUFFIX.items():
@@ -179,7 +200,9 @@ FIXED: dict[str, FieldSpec] = {
                       note_en="Overrides the file name on load", note_zh="读档时以这里的值为准，会覆盖文件名"),
     "charGender": _spec("identity", "str", "Gender", "性别", default="Male", core=True,
                         note_en="Male / Female", note_zh="Male / Female"),
-    "Questline": _spec("identity", "int", "Questline", "任务线编号", 0),
+    "Questline": _spec("identity", "int", "Questline", "任务线编号", 0, 0, 1,
+                       note_en="0 = current questline, 1 = old (pre-9) questline",
+                       note_zh="0 = 当前任务线，1 = 旧任务线（游戏 9 版本以前）"),
 
     "Current Level": _spec("growth", "int", "Level", "等级", 0, 0, MAX_LEVEL, core=True,
                            note_en="0–199; values above are clamped on level-up",
@@ -309,7 +332,7 @@ def classify(key: str, pets: Iterable[str] = ()) -> str:
         return "quest"
     if key.startswith("Achieve:"):
         return "achieve"
-    if key.startswith("Recipe:"):
+    if key.startswith(("Recipe:", "Old Recipe:")):
         return "recipe"
 
     m = SLOT_RE.match(key)
@@ -447,9 +470,11 @@ def spec_for(key: str, pets: Iterable[str] = ()) -> FieldSpec | None:
                              label_zh="进度", default=0, vmin=0)
         return FieldSpec(cat="achieve", kind="int", label_en="Claimed",
                          label_zh="已领取", default=0, vmin=0, vmax=1)
-    if key.startswith("Recipe:"):
+    if key.startswith(("Recipe:", "Old Recipe:")):
         return FieldSpec(cat="recipe", kind="int", label_en="Unlocked",
-                         label_zh="已解锁", default=0, vmin=0, vmax=1)
+                         label_zh="已解锁", default=0, vmin=0, vmax=1,
+                         note_en="Old questline stores unlocks under 'Old Recipe: '",
+                         note_zh="旧任务线的解锁键是 'Old Recipe: '")
 
     return None
 

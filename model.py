@@ -344,8 +344,10 @@ class SaveDoc:
         for key in self.order:
             if key.startswith("Old Quest: "):
                 prefix, complete_prefix, daily_prefix = "Old Quest: ", "Old Quest Complete: ", "Old Daily: "
+                line = "old"
             elif key.startswith("Quest: "):
                 prefix, complete_prefix, daily_prefix = "Quest: ", "Quest Complete: ", "Daily: "
+                line = "current"
             else:
                 continue
             rest = key[len(prefix):]
@@ -354,6 +356,7 @@ class SaveDoc:
             rows.append({
                 "key": key,
                 "title": rest,
+                "line": line,
                 "step": self.values[key],
                 "times": self.get(f"{complete_prefix}{rest}", 0),
                 "daily": self.get(f"{daily_prefix}{rest}"),
@@ -383,8 +386,20 @@ class SaveDoc:
             for t in sorted(titles, key=schema.natural_key)
         ]
 
-    def recipes(self) -> list[tuple[str, Any]]:
-        return [(k[len("Recipe: "):], self.values[k]) for k in self.order if k.startswith("Recipe: ")]
+    def recipes(self, line: str | None = None) -> list[tuple[str, str, Any]]:
+        """返回 (前缀, 配方名, 值)。旧任务线的解锁键是 `Old Recipe: `。"""
+        out: list[tuple[str, str, Any]] = []
+        for key in self.order:
+            for prefix, tag in (("Old Recipe: ", "Old Recipe: "), ("Recipe: ", "Recipe: ")):
+                if not key.startswith(prefix):
+                    continue
+                if line == "old" and not prefix.startswith("Old"):
+                    continue
+                if line == "current" and prefix.startswith("Old"):
+                    continue
+                out.append((tag, key[len(prefix):], self.values[key]))
+                break
+        return out
 
 
 def _same(a: Any, b: Any) -> bool:

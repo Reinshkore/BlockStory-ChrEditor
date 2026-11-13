@@ -147,7 +147,7 @@ for %f in (tests\test_*.py) do .venv\Scripts\python.exe %f
 ```
 
 The one test that inspects a real game installation skips itself when the game is absent.
-Current status: 9 test files, 300+ assertions. The real-save round-trip count varies with the
+Current status: 10 test files, 383 assertions. The real-save round-trip count varies with the
 number of local backups.
 
 ## Project layout

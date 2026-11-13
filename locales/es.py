@@ -290,6 +290,47 @@ STRINGS = {
     "q.counters": "Contadores de pasos sin procesar",
     "q.countersHint": "Incluye contadores de misiones personalizadas y de misiones eliminadas de la versión actual.",
 
+    # Líneas de misiones
+    "q.tab.chain": "Cadenas de misiones",
+    "q.line.current": "Línea de misiones actual",
+    "q.line.old": "Línea de misiones antigua",
+    "q.line.badge": "Línea de misiones: {name}",
+    "q.line.stats": "{total} misiones · {done} completadas / {active} en curso / {start} sin empezar",
+    "q.line.switch": "Cambiar de línea de misiones",
+    "q.line.write": "Se escribirá Questline = {value}",
+    "q.line.otherKeys": "Las {count} claves de la otra línea de misiones permanecen en el archivo, pero el juego no las cargará.",
+    "q.line.targetStats": "Línea de destino: {total} misiones, {done} ya completadas.",
+    "q.line.recipes": "Recetas: {own} desbloqueadas en esta línea, {other} en la otra.",
+    "q.line.recipeNote": "Las dos líneas de misiones guardan los desbloqueos de recetas con prefijos distintos. El cambio no las migra.",
+    "q.line.confirm": "Entiendo que el progreso y los desbloqueos de recetas no se migran.",
+    "q.line.apply": "Cambiar",
+    "q.line.done": "Línea de misiones cambiada. Surte efecto la próxima vez que el juego cargue esta partida.",
+    "q.line.missing": "Esta partida no tiene la clave Questline; el juego la trata como la línea actual.",
+    "q.line.mismatch": "Questline vale {value}; los valores distintos de 0 y 1 se tratan como la línea actual.",
+    "q.line.conflict": "Hay {count} claves de la otra línea de misiones. El juego no las carga.",
+
+    # Edición de misiones secundarias
+    "q.npc": "NPC",
+    "q.all": "Todas",
+    "q.status": "Estado objetivo",
+    "q.targets": "Objetivos del paso (solo lectura)",
+    "q.targetKill": "Matar {name} × {count}",
+    "q.noTargets": "Este paso no tiene contador de muertes; el progreso se comprueba en el inventario o la posición.",
+    "q.prereq": "Requisitos previos",
+    "q.prereqNone": "Ninguno",
+    "q.prereqWarn": "Los requisitos previos no están completados, así que el juego no ofrecerá esta misión. Cambiar su estado no la hace disponible.",
+    "q.applySide": "Aplicar esta misión",
+
+    # Cadenas de misiones
+    "q.chain.mode": "Operación",
+    "q.chain.complete": "Completar hasta este nodo",
+    "q.chain.reset": "Restablecer este nodo y sus descendientes",
+    "q.chain.node": "Nodo",
+    "q.chain.affected": "{n} misiones afectadas: {names}",
+    "q.chain.apply": "Aplicar cambio en la cadena",
+    "q.chain.note": "Completar recorre la cadena de dependencias hacia arriba; restablecer afecta a este nodo y a todo lo que depende de él. Ninguna de las dos operaciones toca las ramas hermanas.",
+    "q.line.col": "Línea de misiones",
+
     # Ordenar
     "td.title": "Ordenar entradas",
     "td.sub": "Cuatro operaciones independientes. Primero obtén una vista previa; al aplicar solo se modifica la memoria hasta que guardes.",
@@ -442,4 +483,5 @@ STRINGS = {
     "q.disabledMode": "El juego desactiva las misiones en los modos Creativo y Sandbox. La ausencia de claves de misión es normal aquí; los logros y las recetas guardadas siguen disponibles abajo.",
     "md.questPolicy": "Creativo y Sandbox desactivan las misiones, por lo que las claves Quest / Quest Complete / Daily se excluyen de la copia.",
     "md.skipped": "Se excluyeron {n} claves de misión no compatibles",
+    "val.I_QUESTLINE_EXTRA": "Hay {count} claves de la otra línea argumental ({other}); el juego no las carga",
 }

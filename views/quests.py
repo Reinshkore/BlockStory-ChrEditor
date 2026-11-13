@@ -18,30 +18,37 @@ def _catalog() -> gamedata.Catalog:
 
 
 def _quest_state(step) -> str:
-    if step == "#start":
+    if step in (None, "", "#start"):
         return "start"
     if step in {"#end", "#end_dark_side"}:
         return "done"
     return "active"
 
 
+def _line_name(line: str) -> str:
+    return t("q.line.old") if line == "old" else t("q.line.current")
+
+
 def render(doc: SaveDoc, issues) -> None:
     theme.page_head(t("q.title"), t("q.sub"))
     catalog = _catalog()
-    quests = doc.quests()
+    line = questops.active_questline(doc)
+    stats = questops.line_stats(doc, line)
     achievements = doc.achievements()
     recipes = doc.recipes()
-    done = sum(1 for q in quests if _quest_state(q["step"]) == "done")
-    active = sum(1 for q in quests if _quest_state(q["step"]) == "active")
     claimed = sum(1 for a in achievements if a["claimed"])
+
+    _line_bar(doc, line, stats, recipes)
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.metric(t("q.quests"), len(quests), help=f"{t('q.done')} {done} · {t('q.active')} {active}")
+        st.metric(t("q.quests"), stats["total"],
+                  help=f"{t('q.done')} {stats['done']} · {t('q.active')} {stats['active']}")
     with c2:
         st.metric(t("q.achieve"), len(achievements), help=f"{t('q.claimed')} {claimed}")
     with c3:
         st.metric(t("q.recipes"), len(recipes))
+
     if catalog.error:
         theme.warnbox(t("it.catalogError", msg=catalog.error, path=catalog.source))
         _all_progress(doc, achievements, recipes)
@@ -51,17 +58,94 @@ def render(doc: SaveDoc, issues) -> None:
         _all_progress(doc, achievements, recipes)
         return
 
+    if line == "old":
+        tab_chain, tab_side, tab_all = st.tabs(
+            [t("q.tab.chain"), t("q.tab.side"), t("q.tab.all")])
+        with tab_chain:
+            _chain(doc, catalog)
+        with tab_side:
+            _side(doc, catalog, line)
+        with tab_all:
+            _all_progress(doc, achievements, recipes)
+        return
+
     tab_main, tab_side, tab_daily, tab_all = st.tabs(
         [t("q.tab.main"), t("q.tab.side"), t("q.tab.daily"), t("q.tab.all")])
     with tab_main:
         _mainline(doc, catalog)
     with tab_side:
-        _side(doc, catalog)
+        _side(doc, catalog, line)
     with tab_daily:
         _daily(doc, catalog)
     with tab_all:
         _all_progress(doc, achievements, recipes)
 
+
+# --------------------------------------------------------------------------- #
+# 任务线
+# --------------------------------------------------------------------------- #
+
+def _line_bar(doc: SaveDoc, line: str, stats: dict, recipes) -> None:
+    counts = questops.line_key_counts(doc)
+    other = "current" if line == "old" else "old"
+    raw = doc.get(schema.QUEST_LINE_KEY)
+    with st.container(border=True):
+        left, right = st.columns([3, 1])
+        with left:
+            st.markdown(f"**{t('q.line.badge', name=_line_name(line))}**")
+            st.caption(t("q.line.stats", **stats))
+            if raw is None:
+                st.caption(t("q.line.missing"))
+            elif raw not in (0, 1):
+                st.caption(t("q.line.mismatch", value=raw))
+            if counts[other]:
+                theme.warnbox(t("q.line.conflict", count=counts[other]))
+        with right:
+            if st.button(t("q.line.switch"), width="stretch",
+                         key=f"q_line_switch_{doc.widget_id}"):
+                st.session_state["q_line_dialog"] = True
+    _line_dialog(doc, line, recipes)
+
+
+def _line_dialog(doc: SaveDoc, line: str, recipes) -> None:
+    if not st.session_state.get("q_line_dialog"):
+        return
+    target = "current" if line == "old" else "old"
+    counts = questops.line_key_counts(doc)
+    target_stats = questops.line_stats(doc, target)
+    own = sum(1 for prefix, _name, _value in recipes
+              if prefix.startswith("Old") == (line == "old"))
+    other_recipes = len(recipes) - own
+
+    @st.dialog(t("q.line.switch"))
+    def _body() -> None:
+        st.markdown(f"**{_line_name(line)} → {_line_name(target)}**")
+        st.write(t("q.line.write", value=1 if target == "old" else 0))
+        st.caption(t("q.line.otherKeys", count=counts[line]))
+        st.caption(t("q.line.targetStats", total=target_stats["total"],
+                     done=target_stats["done"]))
+        st.caption(t("q.line.recipes", own=own, other=other_recipes))
+        st.caption(t("q.line.recipeNote"))
+        ok = st.checkbox(t("q.line.confirm"), key=f"q_line_ok_{line}")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button(t("q.line.apply"), type="primary", width="stretch",
+                         disabled=not ok or not st.session_state.editable):
+                questops.apply_plan(doc, questops.build_questline_plan(doc, target))
+                st.session_state["q_line_dialog"] = False
+                st.toast(t("q.line.done"))
+                st.rerun()
+        with c2:
+            if st.button(t("c.cancel"), width="stretch"):
+                st.session_state["q_line_dialog"] = False
+                st.rerun()
+
+    _body()
+
+
+# --------------------------------------------------------------------------- #
+# 主线（仅当前线）
+# --------------------------------------------------------------------------- #
 
 def _mainline(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
     chain = questops.mainline(catalog)
@@ -113,36 +197,153 @@ def _mainline(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
         st.rerun()
 
 
-def _side(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
-    main_titles = {q.title for q in questops.mainline(catalog)}
-    quests = [q for q in catalog.quests.values()
-              if not q.daily and q.title not in main_titles]
-    quests.sort(key=lambda q: questops.quest_name(q, lang()).casefold())
-    if not quests:
+# --------------------------------------------------------------------------- #
+# 支线（两线共用）
+# --------------------------------------------------------------------------- #
+
+def _quest_label(doc: SaveDoc, catalog: gamedata.Catalog, line: str, title: str) -> str:
+    quest = catalog.for_line(line).get(title)
+    name = questops.quest_name(quest, lang()) if quest else title
+    step = doc.get(schema.quest_key(line, "quest", title), "#start")
+    return f"{name} — {t(f'q.{_quest_state(step)}')}"
+
+
+def _side(doc: SaveDoc, catalog: gamedata.Catalog, line: str) -> None:
+    defs = catalog.for_line(line)
+    pool = [q for q in defs.values() if not q.daily and not q.shop]
+    if line == "current":
+        main_titles = {q.title for q in questops.mainline(catalog)}
+        pool = [q for q in pool if q.title not in main_titles]
+    if not pool:
         st.caption(t("c.none_yet"))
         return
-    title = st.selectbox(t("q.sidePick"), [q.title for q in quests],
-                         format_func=lambda x: questops.quest_name(catalog.quests[x], lang()),
-                         key=f"q_side_{doc.widget_id}")
-    quest = catalog.quests[title]
-    current = doc.get(f"Quest: {title}", "#start")
-    st.caption(f"{t('q.current')}: {display_value(current)} · NPC {quest.npc}")
-    ending = "#end"
-    if current == "#end_dark_side":
-        ending = st.selectbox(t("q.ending"), ["#end_dark_side", "#end"], key="q_side_ending")
-    c1, c2 = st.columns(2)
+    npcs = sorted({q.npc for q in pool if q.npc})
+    all_label = t("q.all")
+    c1, c2 = st.columns([1, 2])
     with c1:
-        if st.button(t("q.completeSide"), width="stretch", disabled=not st.session_state.editable):
-            questops.apply_plan(doc, questops.build_side_plan(doc, quest, "complete", ending))
-            st.toast(t("q.applied", n=1))
-            st.rerun()
+        npc_choice = st.selectbox(t("q.npc"), [all_label, *npcs],
+                                  key=f"q_npc_{line}_{doc.widget_id}")
+    npc = "" if npc_choice == all_label else npc_choice
+    narrowed = [q for q in pool if not npc or q.npc == npc]
+    narrowed.sort(key=lambda q: questops.quest_name(q, lang()).casefold())
+    labels = {q.title: _quest_label(doc, catalog, line, q.title) for q in narrowed}
     with c2:
-        if st.button(t("q.resetSide"), width="stretch", disabled=not st.session_state.editable):
-            questops.apply_plan(doc, questops.build_side_plan(doc, quest, "reset"))
-            st.toast(t("q.applied", n=1))
-            st.rerun()
+        choice = st.selectbox(t("q.sidePick"), list(labels.values()),
+                              key=f"q_side_{line}_{npc}_{doc.widget_id}")
+    title = next((key for key, value in labels.items() if value == choice),
+                 narrowed[0].title)
+    quest = defs[title]
+    _quest_detail(doc, quest, line)
+
+
+def _quest_detail(doc: SaveDoc, quest: gamedata.QuestDef, line: str) -> None:
+    key = schema.quest_key(line, "quest", quest.title)
+    current = doc.get(key, "#start")
+    deps = [dep for dep in quest.deps if dep]
+    prereq = ", ".join(deps) if deps else t("q.prereqNone")
+    st.markdown(f"**{questops.quest_name(quest, lang())}**")
+    st.caption(f"{t('q.npc')} {quest.npc} · {t('q.prereq')}: {prereq} · "
+               f"{t('q.current')}: {display_value(current)}")
+    if deps and not all(questops.is_done(doc.get(schema.quest_key(line, "quest", dep)))
+                        for dep in deps):
+        theme.warnbox(t("q.prereqWarn"))
+
+    steps = questops.editable_steps(quest)
+    action_steps = [s for s in steps if s not in {"#start", "#end", "#end_dark_side"}]
+    states = ["start"] + (["active"] if action_steps else []) + ["done"]
+    state = _quest_state(current)
+    default = state if state in states else "start"
+    status = st.segmented_control(
+        t("q.status"), states, default=default,
+        format_func=lambda s: t(f"q.{s}"),
+        key=f"q_status_{line}_{quest.title}_{doc.widget_id}")
+    status = status or default
+
+    step = "#start"
+    if status == "active":
+        stored = current if current in action_steps else action_steps[0]
+        step = st.selectbox(t("q.step"), action_steps,
+                            index=action_steps.index(stored) if stored in action_steps else 0,
+                            key=f"q_step_{line}_{quest.title}_{doc.widget_id}")
+        targets = questops.step_targets(quest, step)
+        st.caption(t("q.targets"))
+        if targets:
+            st.markdown(" ".join(
+                theme.badge(t("q.targetKill", name=name, count=count), "mute")
+                for name, count in targets), unsafe_allow_html=True)
+        else:
+            st.caption(t("q.noTargets"))
+    elif status == "done":
+        endings = [e for e in ("#end", "#end_dark_side") if e in steps]
+        if len(endings) > 1:
+            step = st.selectbox(t("q.ending"), endings,
+                                key=f"q_end_{line}_{quest.title}_{doc.widget_id}")
+        else:
+            step = "#end"
+
+    plan = questops.build_quest_plan(doc, quest, step)
+    st.caption(t("q.planCounts", add=plan.added, mod=plan.modified, rem=plan.removed))
+    with st.expander(t("q.showPlan")):
+        C.change_table(plan.changes, limit=100)
+    if st.button(t("q.applySide"), type="primary", disabled=not st.session_state.editable,
+                 key=f"q_apply_side_{line}_{quest.title}_{doc.widget_id}"):
+        questops.apply_plan(doc, plan)
+        st.toast(t("q.applied", n=len(plan.changes)))
+        st.rerun()
     theme.note(t("q.sideNote"))
 
+
+# --------------------------------------------------------------------------- #
+# 任务链（仅旧线）
+# --------------------------------------------------------------------------- #
+
+def _chain(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
+    forest = questops.old_forest(catalog)
+    if not forest.defs:
+        st.caption(t("c.none_yet"))
+        return
+    rows = []
+    for title in forest.order:
+        quest = forest.defs[title]
+        step = doc.get(schema.quest_key("old", "quest", title), "#start")
+        indent = "　" * forest.depth[title] + ("↳ " if forest.depth[title] else "")
+        rows.append({t("q.quest"): indent + questops.quest_name(quest, lang()),
+                     t("q.npc"): quest.npc,
+                     t("q.step"): display_value(step),
+                     "": t(f"q.{_quest_state(step)}")})
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
+                 height=min(90 + 26 * len(rows), 460))
+
+    labels = {}
+    for title in forest.order:
+        indent = "　" * forest.depth[title] + ("↳ " if forest.depth[title] else "")
+        labels[title] = indent + questops.quest_name(forest.defs[title], lang())
+    choice = st.selectbox(t("q.chain.node"), list(labels.values()),
+                          key=f"q_chain_node_{doc.widget_id}")
+    node = next((key for key, value in labels.items() if value == choice),
+                forest.order[0])
+    mode = st.segmented_control(
+        t("q.chain.mode"), ["complete", "reset"], default="complete",
+        format_func=lambda m: t(f"q.chain.{m}"),
+        key=f"q_chain_mode_{doc.widget_id}")
+    mode = mode or "complete"
+    plan = questops.build_chain_plan(doc, forest, node, mode)
+    affected = plan.metrics.get("quests", [])
+    st.caption(t("q.chain.affected", n=len(affected), names=", ".join(affected[:6])))
+    st.caption(t("q.planCounts", add=plan.added, mod=plan.modified, rem=plan.removed))
+    with st.expander(t("q.showPlan")):
+        C.change_table(plan.changes, limit=100)
+    theme.note(t("q.chain.note"))
+    if st.button(t("q.chain.apply"), type="primary", disabled=not st.session_state.editable,
+                 key=f"q_chain_apply_{doc.widget_id}"):
+        questops.apply_plan(doc, plan)
+        st.toast(t("q.applied", n=len(plan.changes)))
+        st.rerun()
+
+
+# --------------------------------------------------------------------------- #
+# 日常（仅当前线）
+# --------------------------------------------------------------------------- #
 
 def _daily(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
     quests = sorted((q for q in catalog.quests.values() if q.daily),
@@ -150,9 +351,10 @@ def _daily(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
     if not quests:
         st.caption(t("c.none_yet"))
         return
-    title = st.selectbox(t("q.dailyPick"), [q.title for q in quests],
-                         format_func=lambda x: questops.quest_name(catalog.quests[x], lang()),
-                         key=f"q_daily_{doc.widget_id}")
+    labels = {q.title: questops.quest_name(q, lang()) for q in quests}
+    choice = st.selectbox(t("q.dailyPick"), list(labels.values()),
+                          key=f"q_daily_{doc.widget_id}")
+    title = next((key for key, value in labels.items() if value == choice), quests[0].title)
     quest = catalog.quests[title]
     current = int(doc.get(f"Quest Complete: {title}", 0) or 0)
     upper = questops.daily_slider_upper(current, quest.daily_tiers)
@@ -174,6 +376,10 @@ def _daily(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
     theme.note(t("q.dailyNote"))
 
 
+# --------------------------------------------------------------------------- #
+# 全部进度
+# --------------------------------------------------------------------------- #
+
 def _all_progress(doc: SaveDoc, achievements, recipes) -> None:
     theme.warnbox(t("q.trap"))
     search = st.text_input(t("c.search"), key="q_search", placeholder=t("c.search"))
@@ -184,7 +390,9 @@ def _all_progress(doc: SaveDoc, achievements, recipes) -> None:
     for q in quests:
         if needle and needle not in q["title"].lower():
             continue
-        rows.append({t("fd.col.key"): q["title"], t("q.step"): display_value(q["step"]),
+        rows.append({t("fd.col.key"): q["title"],
+                     t("q.line.col"): _line_name(q["line"]),
+                     t("q.step"): display_value(q["step"]),
                      "": t(f"q.{_quest_state(q['step'])}"), t("q.times"): q["times"],
                      t("q.daily"): (q["daily"] or "")[:19]})
     if rows:
@@ -197,7 +405,8 @@ def _all_progress(doc: SaveDoc, achievements, recipes) -> None:
     for key in doc.order:
         rest = key.split("Quest: ", 1)[-1] if "Quest: " in key else ""
         if rest and schema.QUEST_PROG_RE.match(rest) and (not needle or needle in key.lower()):
-            counter_rows.append({t("fd.col.key"): key, t("fd.col.value"): display_value(doc.values[key])})
+            counter_rows.append({t("fd.col.key"): key,
+                                 t("fd.col.value"): display_value(doc.values[key])})
     if counter_rows:
         st.markdown('<div class="bs-cat">' + t("q.counters") + "</div>", unsafe_allow_html=True)
         st.caption(t("q.countersHint"))
@@ -220,7 +429,8 @@ def _all_progress(doc: SaveDoc, achievements, recipes) -> None:
         st.caption(t("c.none_yet"))
 
     st.markdown('<div class="bs-cat">' + t("q.recipes") + "</div>", unsafe_allow_html=True)
-    names = [name for name, value in recipes if not needle or needle in name.lower()]
+    names = [("Old " if prefix.startswith("Old") else "") + name
+             for prefix, name, _value in recipes if not needle or needle in name.lower()]
     if names:
         st.markdown(" ".join(theme.badge(n, "mute") for n in names), unsafe_allow_html=True)
     else:
