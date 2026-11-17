@@ -21,7 +21,9 @@ import modeops  # noqa: E402
 import modeview  # noqa: E402
 import schema  # noqa: E402
 import storage  # noqa: E402
+import uistate  # noqa: E402
 import validate  # noqa: E402
+from model import SaveDoc  # noqa: E402
 from i18n import t  # noqa: E402
 from ui import theme  # noqa: E402
 from views import fields, items, mode_page, overview, quests, reset_page, save_page, tidy_page  # noqa: E402
@@ -49,7 +51,6 @@ def init_state() -> None:
     ss.setdefault("doc", None)
     ss.setdefault("path", None)
     ss.setdefault("editable", False)
-    ss.setdefault("focus_key", None)
     ss.setdefault("labels", {})
     ss.setdefault("flash", [])
     ss.setdefault("write_result", None)
@@ -96,15 +97,18 @@ def request_doc(doc, path: Path | None, label: str) -> None:
 
 
 def _install_doc(doc, path: Path | None, label: str) -> None:
-    st.session_state.doc = doc
-    st.session_state.path = path
-    st.session_state.labels = storage.load_labels(label)
-    st.session_state.focus_key = None
-    st.session_state.write_result = None
-    st.session_state.slot_target = None
-    st.session_state.item_move_source = None
-    st.session_state.editable = False
-    st.session_state.pending_load = None
+    ss = st.session_state
+    ss.doc = doc
+    ss.path = path
+    ss.labels = storage.load_labels(label)
+    ss.write_result = None
+    uistate.close_transients(ss)
+    uistate.request_readonly()
+    ss.pending_load = None
+    # 这些控件的旧值属于上一份存档：不清掉会指向新存档里不存在的键。
+    uistate.forget("f_pickkey", "f_page", "f_sig", "q_chain_node",
+                   "i_prefix_inventory", "i_prefix_quickslot", "i_prefix_equipment",
+                   "i_prefix_pet", "i_prefix_pet_equip", "i_prefix_container")
     # 只在载入时建议模式；模式控件已经创建，必须等到下一次 rerun 前再赋值。
     suggestion = modeops.suggest_mode(doc, st.session_state.mode)
     if suggestion:
@@ -119,7 +123,22 @@ def _apply_pending_mode() -> None:
 
 
 def current_issues(doc):
-    return validate.validate(doc, catalog=_game_catalog()) if doc else []
+    """校验结果按存档文本缓存：序列化 5ms 换掉每次 43ms 的全量校验。"""
+    if not doc:
+        return []
+    try:
+        text = doc.serialize()
+    except Exception:  # noqa: BLE001 - 序列化失败时退回直接校验
+        return validate.validate(doc, catalog=_game_catalog())
+    return _issues_for(text, tuple(doc.duplicates), _game_version())
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def _issues_for(text: str, duplicates: tuple[str, ...], version: str) -> list:
+    doc = SaveDoc.from_text(text)
+    if duplicates:
+        doc.duplicates = list(duplicates)  # 序列化会丢掉重复键信息
+    return validate.validate(doc, catalog=_game_catalog())
 
 
 @st.cache_resource(show_spinner=False)
@@ -130,7 +149,7 @@ def _game_catalog() -> gamedata.Catalog:
 @st.cache_resource(show_spinner=False)
 def _game_version() -> str:
     version = _game_catalog().version
-    return version or "14.5.3"
+    return version or "14.5.5"
 
 
 # --------------------------------------------------------------------------- #
@@ -159,10 +178,11 @@ def render_sidebar() -> None:
             return
 
         st.markdown('<div class="bs-hr"></div>', unsafe_allow_html=True)
-        editable = st.toggle(t("side.edit"), value=ss.editable, help=t("side.editHint"))
-        if ss.editable and not editable:
-            items.close_transients(ss)
-        ss.editable = editable
+        # 带 key 的开关：写入由控件自己完成，退出编辑时只需在 on_change 里收尾。
+        # 以前用 value=ss.editable 的无 key 版本，外部（写盘、恢复备份、换档）
+        # 把 ss.editable 置回 False 后控件仍显示"开"，界面与实际状态不一致。
+        st.toggle(t("side.edit"), key="editable", help=t("side.editHint"),
+                  on_change=uistate.on_editable_change)
 
         st.markdown(f'<div class="bs-cat">{t("side.nav")}</div>', unsafe_allow_html=True)
         _render_nav()
@@ -185,16 +205,16 @@ def render_sidebar() -> None:
 
 def _render_nav() -> None:
     """用按钮而不是 st.radio：Streamlit 的单选框只有点中最左侧的小圆圈才响应，
-    点文字没有反应——导航几乎全是文字，用户会以为坏了。"""
+    点文字没有反应——导航几乎全是文字，用户会以为坏了。
+
+    按钮 key 固定、用 `type` 表示选中；切页在 `on_click` 回调里完成，
+    渲染函数只读 `ss.nav`，因此点一次只跑一轮，也不会在绘制中途改状态。
+    """
     ss = st.session_state
     for pid in NAV_ORDER:
-        active = ss.nav == pid
-        key = f"nav_{'on' if active else 'off'}_{pid}"
-        if st.button(t(f"nav.{pid}"), key=key, width="stretch"):
-            items.close_transients(ss)
-            ss.language_dialog = False
-            ss.nav = pid
-            st.rerun()
+        st.button(t(f"nav.{pid}"), key=f"nav_{pid}", width="stretch",
+                  type="primary" if ss.nav == pid else "secondary",
+                  on_click=uistate.goto, args=(pid,))
 
 
 def _render_loader() -> None:
@@ -217,7 +237,7 @@ def _render_loader() -> None:
                               format_func=lambda n: labels.get(n, n), on_change=_on_pick)
 
         def _on_mode() -> None:
-            items.close_transients(ss)
+            uistate.close_transients(ss)
 
         st.selectbox(t("side.mode"), schema.WORLD_MODES, key="mode",
                      format_func=lambda mode: t(f"fd.mode.{mode}"), on_change=_on_mode)
@@ -259,7 +279,6 @@ def _render_loader() -> None:
         uploaded = st.file_uploader(t("side.upload"), type=["chr", "json", "txt"])
         if uploaded is not None:
             raw = uploaded.getvalue().decode("utf-8", errors="replace")
-            from model import SaveDoc
 
             try:
                 doc = SaveDoc.from_text(raw, path=None)
@@ -332,10 +351,11 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     init_state()
+    uistate.apply_pending()
     _apply_pending_mode()
     if st.session_state.get("active_nav") != st.session_state.nav:
         # 不论通过侧栏、直达链接还是浏览器导航，进入 Items 都不恢复旧弹窗。
-        items.close_transients(st.session_state)
+        uistate.close_transients(st.session_state)
         st.session_state.active_nav = st.session_state.nav
     theme.inject()
     render_sidebar()

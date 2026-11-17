@@ -3,7 +3,6 @@
 STRINGS = {
     "app.title": "Editor de saves",
     "app.subtitle": "Block Story",
-    "app.version": "v14.5.3",
     "nav.overview": "Visão geral",
     "nav.fields": "Campos",
     "nav.items": "Itens e contêineres",
@@ -226,6 +225,7 @@ STRINGS = {
 
     "q.title": "Missões e conquistas",
     "q.sub": "Predefinições rápidas de progresso e a lista completa de progresso bruto.",
+    "q.section": "Seção",
     "q.tab.main": "História principal",
     "q.tab.side": "Missões secundárias",
     "q.tab.daily": "Missões diárias",

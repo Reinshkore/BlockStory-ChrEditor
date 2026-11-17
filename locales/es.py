@@ -4,7 +4,6 @@ STRINGS = {
     # Aplicación y navegación
     "app.title": "Editor de partidas",
     "app.subtitle": "Block Story",
-    "app.version": "v14.5.3",
     "nav.overview": "Resumen",
     "nav.fields": "Campos",
     "nav.items": "Objetos y contenedores",
@@ -234,6 +233,7 @@ STRINGS = {
     # Misiones
     "q.title": "Misiones y logros",
     "q.sub": "Ajustes rápidos de progreso y la lista completa de progreso sin procesar.",
+    "q.section": "Sección",
     "q.tab.main": "Historia principal",
     "q.tab.side": "Misiones secundarias",
     "q.tab.daily": "Misiones diarias",

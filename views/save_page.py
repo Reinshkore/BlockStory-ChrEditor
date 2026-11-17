@@ -6,6 +6,7 @@ import streamlit as st
 
 import storage
 import tidy
+import uistate
 from i18n import t
 from model import SaveDoc, display_value
 from ui import components as C
@@ -146,7 +147,7 @@ def _backups(doc: SaveDoc) -> None:
                         fresh = storage.read_save(doc.path)
                         st.session_state.doc = fresh
                         st.session_state.write_result = None
-                        st.session_state.editable = False
+                        uistate.request_readonly()
                         st.toast(t("sv.restored", name=backup.name))
                         st.rerun()
 
@@ -162,7 +163,7 @@ def _write(doc: SaveDoc, target: Path) -> None:
     doc.path = result.path
     st.session_state.path = result.path
     st.session_state.write_result = result
-    st.session_state.editable = False
+    uistate.request_readonly()
     st.rerun()
 
 

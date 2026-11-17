@@ -16,6 +16,8 @@ from validate import ERROR, issue_index
 
 VIEWS = ("category", "mode", "raw", "changed", "issues")
 MODES = schema.WORLD_MODES
+PAGE_SIZE = 200
+MAX_PICK_OPTIONS = 300
 
 
 def _mode_of(key: str) -> str:
@@ -49,12 +51,22 @@ def _apply_pending() -> None:
 
 
 def render(doc: SaveDoc, issues) -> None:
+    theme.page_head(t("fd.title"), t("fd.sub", n=len(doc.values)))
+    _body(doc, issues)
+
+
+@st.fragment
+def _body(doc: SaveDoc, issues) -> None:
+    """筛选、表格与详情单独成片。
+
+    搜索框每敲一个字、翻一页、换一个详情键都只重跑这一块，
+    侧栏、状态栏和页面头部不再跟着重建。
+    """
     ss = st.session_state
     _apply_pending()
     ss.setdefault("f_view", "category")
     ss.setdefault("f_search", "")
 
-    theme.page_head(t("fd.title"), t("fd.sub", n=len(doc.values)))
     idx = issue_index(issues)
 
     view = st.segmented_control(
@@ -77,10 +89,33 @@ def render(doc: SaveDoc, issues) -> None:
         )
 
     keys = _select_keys(doc, view, idx, search, kind_pick, picked_cats)
-    st.caption(t("c.showing", n=len(keys), total=len(doc.values)))
 
-    if keys:
-        _table(doc, keys, idx)
+    # 分页：一次只渲染 200 行。整表 1654 行会让每次输入都重发 170 KB，
+    # 并且 data_editor 的 key 随筛选结果变化，整块重建会丢掉滚动位置。
+    signature = (view, search, kind_pick, tuple(picked_cats))
+    if ss.get("f_sig") != signature:
+        ss.f_sig = signature
+        ss.f_page = 0
+    page_count = max(1, (len(keys) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(int(ss.get("f_page", 0)), page_count - 1))
+    ss.f_page = page
+
+    c1, c2, c3 = st.columns([0.6, 0.6, 4], vertical_alignment="center")
+    with c1:
+        if st.button("‹", key="f_prev", width="stretch", disabled=page <= 0):
+            ss.f_page = page - 1
+            page -= 1
+    with c2:
+        if st.button("›", key="f_next", width="stretch", disabled=page >= page_count - 1):
+            ss.f_page = page + 1
+            page += 1
+    with c3:
+        st.caption(f"{page + 1}/{page_count} · "
+                   + t("c.showing", n=len(keys), total=len(doc.values)))
+
+    visible = keys[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
+    if visible:
+        _table(doc, visible, idx)
     else:
         st.caption(t("fd.empty"))
 
@@ -97,7 +132,6 @@ def render(doc: SaveDoc, issues) -> None:
 
 def _focus(key: str) -> None:
     st.session_state["pending"] = {"f_search": key, "f_view": "category", "f_pickkey": key}
-    st.session_state.focus_key = key
     st.session_state.nav = "fields"
     st.rerun()
 
@@ -219,17 +253,31 @@ def _apply_table_edits(doc: SaveDoc, before: pd.DataFrame, after: pd.DataFrame) 
 
 # --------------------------------------------------------------------------- #
 
+def _pick_pool(keys: list[str], focus: str, query: str) -> list[str]:
+    """详情下拉的候选：搜索过滤 + 上限；当前焦点必须留在列表里，否则控件值会失效。"""
+    needle = query.strip().lower()
+    pool = ([k for k in keys if needle in k.lower()] if needle else list(keys))[:MAX_PICK_OPTIONS]
+    if focus in keys and focus not in pool:
+        pool.insert(0, focus)
+    return pool or keys[:1]
+
+
 def _detail(doc: SaveDoc, issues, idx) -> None:
     ss = st.session_state
     keys = list(doc.order)
-    focus = ss.get("focus_key")
-    fallback = keys.index(focus) if focus in keys else 0
-
+    if not keys:
+        return
+    focus = ss.get("f_pickkey")
+    if focus not in keys:
+        focus = keys[0]
+    # 下拉只放前 300 项（可再搜索），避免每次重跑都传 1654 个选项。
+    query = st.text_input(t("fd.pick"), key="f_pick_search", placeholder=t("c.search"),
+                          label_visibility="collapsed")
+    pool = _pick_pool(keys, focus, query)
     picked = st.selectbox(
-        t("fd.pick"), keys, index=fallback, key="f_pickkey",
-        label_visibility="collapsed",
+        t("fd.pick"), pool, index=pool.index(focus) if focus in pool else 0,
+        key="f_pickkey", label_visibility="collapsed",
     )
-    ss.focus_key = picked
 
     spec = doc.spec(picked)
     current = doc.values.get(picked)
@@ -271,7 +319,6 @@ def _detail(doc: SaveDoc, issues, idx) -> None:
             if st.button(t("fd.deleteKey"), width="stretch", disabled=not editable, key="d_del"):
                 doc.push_undo(f"delete:{picked}")
                 doc.delete(picked)
-                ss.focus_key = None
                 ss.pop("f_pickkey", None)
                 st.rerun()
 

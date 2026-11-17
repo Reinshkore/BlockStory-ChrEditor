@@ -158,7 +158,9 @@ def _do_quests(work: dict[str, Any], notes,
                                   "Old Quest: ", "Old Quest Complete: ", "Old Daily: "))
     notes.append(("rs.note.quests", {"count": len(removed)}))
     # 任务键两套前缀都清，配方也要两套都清：旧线解锁写在 Old Recipe: 下。
-    recipe_keys = [f"{prefix}{name}" for name in recipe_names
+    # 14.5.5 合并过配方名（Sunshard），历史别名键同样要算作同一个配方。
+    recipe_keys = [f"{prefix}{name}" for recipe in recipe_names
+                   for name in schema.recipe_names(recipe)
                    for prefix in ("Recipe: ", "Old Recipe: ")]
     recipes_removed = sum(work.pop(key, None) is not None for key in recipe_keys)
     if recipe_names:

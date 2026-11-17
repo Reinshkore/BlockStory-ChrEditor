@@ -26,59 +26,69 @@ CARDS = (
 
 def render(doc: SaveDoc, issues) -> None:
     theme.page_head(t("rs.title"), t("rs.sub"))
-    editable = st.session_state.editable
-
     for op, title_key, desc_key in CARDS:
-        plan = _plan(doc, op)
-        with st.container(border=True):
-            head = [f"**{t(title_key)}**"]
-            if plan.modified:
-                head.append(theme.badge(t("rs.willModify", n=plan.modified), "warn"))
-            if plan.removed:
-                head.append(theme.badge(t("rs.willRemove", n=plan.removed), "err"))
-            if not plan.changes:
-                head.append(theme.badge(t("c.nochange"), "mute"))
-            st.markdown(" ".join(head), unsafe_allow_html=True)
-            theme.note(t(desc_key))
+        _card(doc, op, title_key, desc_key)
+    _after(doc)
 
-            if op == reset_mod.OP_FULL:
-                theme.warnbox(t("rs.fullWarn"))
 
-            if op == reset_mod.OP_LEVEL:
-                mode = st.radio(
-                    t("rs.skillMode"),
-                    [reset_mod.SKILL_CLAMP, reset_mod.SKILL_RAW],
-                    horizontal=True,
-                    format_func=lambda m: t(f"rs.skillMode.{m}"),
-                    key="r_skillmode",
-                    help=t("rs.skillModeHint"),
-                )
-                theme.note(t("rs.skillModeHint"))
-                plan = _plan(doc, op, skill_mode=mode)
+@st.fragment
+def _card(doc: SaveDoc, op: str, title_key: str, desc_key: str) -> None:
+    """每张卡单独成片：切换"同步配方"之类的选项只重算这一张的计划。
 
-            if op == reset_mod.OP_QUESTS:
-                catalog = _catalog()
-                sync_recipes = st.toggle(
-                    t("rs.questRecipes"), key="r_quest_recipes",
-                    help=t("rs.questRecipesHint"), disabled=bool(catalog.error))
-                theme.note(t("rs.questRecipesHint"))
-                if catalog.error:
-                    theme.warnbox(t("it.catalogError", msg=catalog.error, path=catalog.source))
-                plan = _plan(doc, op, sync_quest_recipes=sync_recipes, catalog=catalog)
+    五张卡各建一份计划（每份都扫全档），整页重跑时五份一起重算，
+    而用户一次只动一张。
+    """
+    editable = st.session_state.editable
+    plan = _plan(doc, op)
+    with st.container(border=True):
+        head = [f"**{t(title_key)}**"]
+        if plan.modified:
+            head.append(theme.badge(t("rs.willModify", n=plan.modified), "warn"))
+        if plan.removed:
+            head.append(theme.badge(t("rs.willRemove", n=plan.removed), "err"))
+        if not plan.changes:
+            head.append(theme.badge(t("c.nochange"), "mute"))
+        st.markdown(" ".join(head), unsafe_allow_html=True)
+        theme.note(t(desc_key))
 
-            for code, params in plan.notes:
-                theme.warnbox(t(code, **params))
+        if op == reset_mod.OP_FULL:
+            theme.warnbox(t("rs.fullWarn"))
 
-            if plan.changes:
-                with st.expander(t("rs.detail") + f" ({len(plan.changes)})"):
-                    C.change_table(plan.changes, limit=200)
+        if op == reset_mod.OP_LEVEL:
+            mode = st.radio(
+                t("rs.skillMode"),
+                [reset_mod.SKILL_CLAMP, reset_mod.SKILL_RAW],
+                horizontal=True,
+                format_func=lambda m: t(f"rs.skillMode.{m}"),
+                key="r_skillmode",
+                help=t("rs.skillModeHint"),
+            )
+            theme.note(t("rs.skillModeHint"))
+            plan = _plan(doc, op, skill_mode=mode)
 
-            if st.button(t("rs.apply"), key=f"r_apply_{op}", type="primary" if op == reset_mod.OP_FULL else "secondary",
-                         disabled=not editable or not plan.changes):
-                reset_mod.apply_plan(doc, plan)
-                st.toast(t("rs.applied", op=t(title_key)))
-                st.session_state.nav = "save"
-                st.rerun()
+        if op == reset_mod.OP_QUESTS:
+            catalog = _catalog()
+            sync_recipes = st.toggle(
+                t("rs.questRecipes"), key="r_quest_recipes",
+                help=t("rs.questRecipesHint"), disabled=bool(catalog.error))
+            theme.note(t("rs.questRecipesHint"))
+            if catalog.error:
+                theme.warnbox(t("it.catalogError", msg=catalog.error, path=catalog.source))
+            plan = _plan(doc, op, sync_quest_recipes=sync_recipes, catalog=catalog)
+
+        for code, params in plan.notes:
+            theme.warnbox(t(code, **params))
+
+        if plan.changes:
+            with st.expander(t("rs.detail") + f" ({len(plan.changes)})"):
+                C.change_table(plan.changes, limit=200)
+
+        if st.button(t("rs.apply"), key=f"r_apply_{op}", type="primary" if op == reset_mod.OP_FULL else "secondary",
+                     disabled=not editable or not plan.changes):
+            reset_mod.apply_plan(doc, plan)
+            st.toast(t("rs.applied", op=t(title_key)))
+            st.session_state.nav = "save"
+            st.rerun()
 
     _after(doc)
 

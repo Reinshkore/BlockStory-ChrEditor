@@ -73,14 +73,35 @@ def save_dir() -> Path:
     return DEFAULT_DIR
 
 
+#: 目录扫描缓存：签名 = 目录 + 每个 .chr 的 (名字, mtime_ns, 大小)。
+#: 侧栏每次重跑都会调 list_saves()，没有缓存时会把所有存档重新解析一遍。
+_LIST_CACHE: dict[tuple, list["SaveInfo"]] = {}
+_LIST_CACHE_MAX = 8
+
+
+def clear_list_cache() -> None:
+    _LIST_CACHE.clear()
+
+
 def list_saves(directory: Path | None = None) -> list[SaveInfo]:
     directory = Path(directory or DEFAULT_DIR)
     if not directory.is_dir():
         return []
+    paths = sorted((p for p in directory.glob("*.chr")
+                    if not p.name.lower().endswith(".mp.chr")),
+                   key=lambda p: p.name)
+    try:
+        signature = (str(directory), tuple(
+            (p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in paths))
+    except OSError:
+        signature = None
+    if signature is not None:
+        cached = _LIST_CACHE.get(signature)
+        if cached is not None:
+            return list(cached)
+
     out: list[SaveInfo] = []
-    for path in directory.glob("*.chr"):
-        if path.name.lower().endswith(".mp.chr"):
-            continue  # 联机临时档，服务端权威
+    for path in paths:
         stat = path.stat()
         info = SaveInfo(path=path, name=path.stem, size=stat.st_size, mtime=stat.st_mtime)
         try:
@@ -106,7 +127,11 @@ def list_saves(directory: Path | None = None) -> list[SaveInfo]:
             info.error = str(exc)
         out.append(info)
     out.sort(key=lambda i: i.mtime, reverse=True)
-    return out
+    if signature is not None:
+        if len(_LIST_CACHE) >= _LIST_CACHE_MAX:
+            _LIST_CACHE.pop(next(iter(_LIST_CACHE)))
+        _LIST_CACHE[signature] = out
+    return list(out)
 
 
 def list_backups(path: Path) -> list[Path]:

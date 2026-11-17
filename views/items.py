@@ -9,18 +9,13 @@ from streamlit_sortables import sort_items
 import gamedata
 import itemops
 import schema
+import uistate
 from i18n import lang, t
 from model import SaveDoc
 from ui import theme
 from validate import issue_index
 
 KINDS = ("inventory", "quickslot", "equipment", "pet", "container")
-
-
-def close_transients(ss) -> None:
-    """离开物品页或退出编辑模式时，关闭格子弹窗和未完成的点选移动。"""
-    ss.slot_target = None
-    ss.item_move_source = None
 
 
 @st.cache_resource(show_spinner=False)
@@ -119,25 +114,34 @@ def render(doc: SaveDoc, issues) -> None:
             "interaction", ["edit", "arrange"], key="i_interaction",
             format_func=lambda x: t(f"it.mode.{x}"), label_visibility="collapsed",
         ) == "arrange"
-    if arrange:
-        _arrange_toolbar(doc, prefix, slots, visible, catalog)
-        if ss.get("item_click_move"):
-            _grid(doc, prefix, slots, visible, idx, catalog, click_move=True)
-        else:
-            _drag_grid(doc, prefix, slots, visible, columns, catalog)
-    else:
-        _grid(doc, prefix, slots, visible, idx, catalog)
+
+    # 网格（连同格子弹窗）单独成片：点一个格子只重跑这一块，
+    # 不再连带侧栏、状态栏和页面头部一起重建。
+    _inventory_block(doc, prefix, visible, idx, catalog, arrange)
 
     if visible < total:
         st.caption(t("it.moreEmpty", n=total - visible))
-        if st.button(t("it.showAll"), key="i_all"):
-            ss.i_show_all = True
-            st.rerun()
+        st.button(t("it.showAll"), key="i_all",
+                  on_click=uistate.set_value, args=("i_show_all", True))
     elif ss.get("i_show_all") and total > 32:
-        if st.button(t("it.showLess"), key="i_less"):
-            ss.i_show_all = False
-            st.rerun()
+        st.button(t("it.showLess"), key="i_less",
+                  on_click=uistate.set_value, args=("i_show_all", False))
     theme.note(t("it.note"))
+
+
+@st.fragment
+def _inventory_block(doc: SaveDoc, prefix: str, visible: int, idx,
+                     catalog: gamedata.Catalog, arrange: bool) -> None:
+    """格子区。fragment 内的交互只重跑本块，页面其余部分不参与重跑。"""
+    slots = doc.slots(prefix)
+    if arrange:
+        _arrange_toolbar(doc, prefix, slots, visible, catalog)
+        if st.session_state.get("item_click_move"):
+            _grid(doc, prefix, slots, visible, idx, catalog, click_move=True)
+        else:
+            _drag_grid(doc, prefix, slots, visible, _columns(doc, prefix), catalog)
+    else:
+        _grid(doc, prefix, slots, visible, idx, catalog)
     _maybe_open_dialog(doc, prefix, catalog)
 
 
@@ -197,9 +201,9 @@ def _arrange_toolbar(doc: SaveDoc, prefix: str, slots, visible: int,
                 st.rerun()
     with c3:
         source = ss.get("item_move_source")
-        if source and st.button(t("it.cancelMove"), width="stretch"):
-            ss.item_move_source = None
-            st.rerun()
+        if source:
+            st.button(t("it.cancelMove"), width="stretch",
+                      on_click=uistate.set_value, args=("item_move_source", None))
     source = ss.get("item_move_source")
     if source:
         st.info(t("it.moveSource", slot=source[1] + 1, prefix=source[0] or t("it.worldContainer")))
@@ -241,13 +245,15 @@ def _grid(doc: SaveDoc, prefix: str, slots, visible: int, idx,
                 problems = [i for i in idx.get(f"{prefix}_name_{index}", []) if i.level != "info"]
                 if problems:
                     help_text += "  ✕"
-                if st.button(label, key=f"{key_prefix}_{prefix}_{index}",
-                             width="stretch", help=help_text, type="tertiary"):
-                    if click_move:
-                        _click_move(doc, prefix, index)
-                    else:
-                        st.session_state.slot_target = (prefix, index)
-                        st.rerun()
+                # 点击只写状态：控件本身已触发重跑，再调 st.rerun() 会白跑一轮。
+                if click_move:
+                    st.button(label, key=f"{key_prefix}_{prefix}_{index}",
+                              width="stretch", help=help_text, type="tertiary",
+                              on_click=_click_move, args=(doc, prefix, index))
+                else:
+                    st.button(label, key=f"{key_prefix}_{prefix}_{index}",
+                              width="stretch", help=help_text, type="tertiary",
+                              on_click=uistate.open_slot, args=(prefix, index))
 
 
 def _click_move(doc: SaveDoc, prefix: str, index: int) -> None:
@@ -260,7 +266,6 @@ def _click_move(doc: SaveDoc, prefix: str, index: int) -> None:
     else:
         itemops.swap_slots_between(doc, source[0], source[1], prefix, index)
         ss.item_move_source = None
-    st.rerun()
 
 
 def _drag_grid(doc: SaveDoc, prefix: str, slots, visible: int, columns: int,
@@ -298,7 +303,10 @@ def _maybe_open_dialog(doc: SaveDoc, prefix: str, catalog: gamedata.Catalog) -> 
 
 
 def _slot_dialog(doc: SaveDoc, prefix: str, index: int, catalog: gamedata.Catalog) -> None:
-    @st.dialog(t("it.edit"), width="small")
+    # on_dismiss：点遮罩或关闭按钮时清掉目标；否则下一次进入物品页会莫名其妙
+    # 又把弹窗打开（那块状态是页面级共享的）。
+    @st.dialog(t("it.edit"), width="small",
+               on_dismiss=lambda: uistate.set_value("slot_target", None))
     def _body() -> None:
         _slot_body(doc, prefix, index, catalog)
     _body()

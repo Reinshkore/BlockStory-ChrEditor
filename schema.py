@@ -82,6 +82,22 @@ def quest_key(line: str, kind: str, title: str) -> str:
     return quest_prefix(line) + base + title
 
 
+#: 配方改名后的历史别名：游戏 14.5.5 把两个名字合并成 Sunshard，
+#: 但 `RecipeManager.LegacyNames` 仍会检查旧键，所以旧存档里的旧键依然生效。
+#: 编辑器同步 / 清空配方时必须把它们当成同一个配方处理，否则撤销不干净。
+RECIPE_ALIASES: dict[str, tuple[str, ...]] = {
+    "Sunshard": ("Sunshard Wizard", "Sunshard Paula"),
+}
+
+
+def recipe_names(recipe: str) -> tuple[str, ...]:
+    """同一配方的全部合法键名：当前名在前，历史别名随后。"""
+    for current, legacy in RECIPE_ALIASES.items():
+        if recipe == current or recipe in legacy:
+            return tuple(dict.fromkeys((current, recipe, *legacy)))
+    return (recipe,)
+
+
 def world_mode_of(key: str) -> str:
     for mode, suffix in WORLD_MODE_SUFFIX.items():
         if key.endswith(suffix):
@@ -238,6 +254,17 @@ FIXED: dict[str, FieldSpec] = {
     "Distance Travelled": _spec("misc", "int", "Distance travelled", "行走距离", 0, 0),
     "Distance Travelled In Vehicle": _spec("misc", "int", "Distance in vehicle", "载具距离", 0, 0),
     "Distance Travelled Mounted": _spec("misc", "int", "Distance mounted", "骑乘距离", 0, 0),
+    # 14.5.5 的广告票券行。Steam 版 TicketAdRows.Gated 是硬编码 false，
+    # 正常单机存档不会出现这三个键；登记只是为了让未知键告警变成可读字段。
+    "TicketAdsWatched": _spec("misc", "int", "Ticket ads watched", "已看广告数", 0, 0,
+                              note_en="Unused on Steam: TicketAdRows.Gated is hard-coded false",
+                              note_zh="Steam 版未启用：TicketAdRows.Gated 恒为 false"),
+    "TicketAdRowsBase": _spec("misc", "int", "Ticket ad base rows", "广告行基础行数", 9, 9,
+                              note_en="Backpack rows before ad rewards (>= 9)",
+                              note_zh="广告奖励前的基础背包行数（≥9）"),
+    "TicketAdRowsGated": _spec("misc", "int", "Ticket ad gating", "广告行启用标记", 0, 0, 1,
+                               note_en="0 = off, 1 = governed by ad rows",
+                               note_zh="0 = 关闭，1 = 由广告行控制"),
 }
 
 # --------------------------------------------------------------------------- #

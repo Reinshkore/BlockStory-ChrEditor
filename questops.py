@@ -136,10 +136,20 @@ def build_mainline_plan(doc: SaveDoc, chain: list[QuestDef], stage: int,
     return _make_plan(doc, work, "mainline", metrics)
 
 
+def _recipe_keys(recipe: str) -> list[str]:
+    """配方的全部键名：当前名 + 历史别名（14.5.5 合并过 Sunshard）。"""
+    return [f"Recipe: {name}" for name in schema.recipe_names(recipe)]
+
+
 def _recipe_still_provided(work: dict[str, Any], recipe: str, catalog: Catalog) -> bool:
-    """同名配方可能由当前或旧任务线的多个任务提供，任一已完成来源都存在就保留。"""
+    """同名配方可能由当前或旧任务线的多个任务提供，任一已完成来源都存在就保留。
+
+    判断要按别名组进行：旧存档写的是 `Sunshard Wizard`，新目录写的是 `Sunshard`，
+    两者是同一个配方，不能因为名字不同就当成"没有来源"而误删。
+    """
+    names = set(schema.recipe_names(recipe))
     for title, recipes in catalog.quest_recipes.items():
-        if recipe not in recipes:
+        if not names.intersection(recipes):
             continue
         if _is_done(work.get(f"Quest: {title}")) or _is_done(work.get(f"Old Quest: {title}")):
             return True
@@ -154,11 +164,13 @@ def _sync_mainline_recipes(work: dict[str, Any], chain: list[QuestDef],
     before = dict(work)
     for quest in chain:
         for recipe in quest.recipes:
-            key = f"Recipe: {recipe}"
+            keys = _recipe_keys(recipe)
             if _is_done(work.get(f"Quest: {quest.title}")):
-                work[key] = 1
+                # 只补当前名，不伪造历史别名键。
+                work[keys[0]] = 1
             elif not _recipe_still_provided(work, recipe, catalog):
-                work.pop(key, None)
+                for key in keys:
+                    work.pop(key, None)
     return sum(before.get(key) != work.get(key) or (key in before) != (key in work)
                for key in set(before) | set(work))
 

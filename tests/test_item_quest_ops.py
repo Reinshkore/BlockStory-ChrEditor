@@ -12,7 +12,7 @@ import itemops  # noqa: E402
 import model  # noqa: E402
 import questops  # noqa: E402
 import schema  # noqa: E402
-from views import items as items_view  # noqa: E402
+import uistate  # noqa: E402
 
 _failures: list[str] = []
 
@@ -44,7 +44,7 @@ def _doc() -> model.SaveDoc:
 def test_items() -> None:
     from types import SimpleNamespace
     ss = SimpleNamespace(slot_target=("Inventory", 0), item_move_source=("Inventory", 1))
-    items_view.close_transients(ss)
+    uistate.close_transients(ss)
     check("导航清理物品弹窗与移动状态", ss.slot_target is None and ss.item_move_source is None)
 
     doc = _doc()
@@ -224,7 +224,7 @@ def test_installed_catalog() -> None:
     check("生物枚举完整映射", len(catalog.mobs) == len(gamedata.MOB_TYPES))
     check("当前主线 19 环", len(questops.mainline(catalog)) == 19)
     check("当前与旧任务配方来源已提取", len(catalog.quest_recipes) > 50
-          and catalog.quests["The Grand Finale"].recipes == ("Sunshard Wizard",))
+          and catalog.quests["The Grand Finale"].recipes == ("Sunshard",))
     check("俄语物品名称来自游戏 PO", bool(catalog.items["Stone"].ru))
 
 

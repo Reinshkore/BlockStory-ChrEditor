@@ -1,4 +1,7 @@
-"""14.5.5 回归：模式等级、技能点双公式、沙盒硬核开关。
+"""14.5.x 回归：模式等级、技能点双公式、沙盒硬核开关、广告票券键。
+
+文件名沿用当时的 "14.5.5" 说法；实际取证基线是 14.5.4（2026-11-13 缓存），
+版本核对见 docs/13-1455-update-review.md 第十一节。
 
 全部在临时目录的合成存档上运行，不读取也不写入真实存档。
 """
@@ -142,10 +145,32 @@ def test_sandbox_hardmode_key() -> None:
               not any(i.code == "W_UNKNOWN" and "Hardmode" in i.key for i in issues))
 
 
+def test_ticket_ad_keys() -> None:
+    """14.5.5 新增的广告票券行键。Steam 版 Gated=false 不会写入，
+    但存档里出现时应当是可读字段，而不是未知键告警。"""
+    for key in ("TicketAdsWatched", "TicketAdRowsBase", "TicketAdRowsGated"):
+        spec = schema.spec_for(key)
+        check(f"{key} 有规格", spec is not None)
+        check(f"{key} 类型为 int", spec is not None and spec.kind == "int",
+              spec.kind if spec else "")
+        check(f"{key} 归入杂项", schema.classify(key) == "misc")
+    doc = model.SaveDoc.from_dict({
+        "charName": "Tester",
+        "TicketAdsWatched": 12,
+        "TicketAdRowsBase": 9,
+        "TicketAdRowsGated": 0,
+    })
+    issues = validate.validate(doc)
+    check("广告票券键不再未知",
+          not any(i.code == "W_UNKNOWN" for i in issues),
+          str([(i.code, i.key) for i in issues]))
+
+
 def main() -> int:
     for title, fn in (("侧栏等级与模式", test_sidebar_level),
                       ("技能点双公式", test_skill_points),
-                      ("沙盒硬核键", test_sandbox_hardmode_key)):
+                      ("沙盒硬核键", test_sandbox_hardmode_key),
+                      ("广告票券键", test_ticket_ad_keys)):
         print(f"\n[{title}]")
         fn()
     print()

@@ -19,7 +19,12 @@ OPTIONS = (
 
 def render(doc: SaveDoc, issues) -> None:
     theme.page_head(t("td.title"), t("td.sub"))
+    _body(doc)
 
+
+@st.fragment
+def _body(doc: SaveDoc) -> None:
+    """选项与预览单独成片：勾选项只重跑本块，计划随之重算。"""
     values = {}
     for field, title, desc in OPTIONS:
         default = tidy.TidyOptions().__getattribute__(field)

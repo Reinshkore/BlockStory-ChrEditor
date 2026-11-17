@@ -58,26 +58,35 @@ def render(doc: SaveDoc, issues) -> None:
         _all_progress(doc, achievements, recipes)
         return
 
+    # 只渲染当前分区：st.tabs 会把所有标签页的正文都执行一遍，
+    # 四个区加起来有 5 个表格和多份计划，用户却只看其中一个。
     if line == "old":
-        tab_chain, tab_side, tab_all = st.tabs(
-            [t("q.tab.chain"), t("q.tab.side"), t("q.tab.all")])
-        with tab_chain:
-            _chain(doc, catalog)
-        with tab_side:
-            _side(doc, catalog, line)
-        with tab_all:
-            _all_progress(doc, achievements, recipes)
-        return
+        sections = (("chain", "q.tab.chain"), ("side", "q.tab.side"), ("all", "q.tab.all"))
+    else:
+        sections = (("main", "q.tab.main"), ("side", "q.tab.side"),
+                    ("daily", "q.tab.daily"), ("all", "q.tab.all"))
+    ids = [sid for sid, _ in sections]
+    labels = {sid: t(key) for sid, key in sections}
+    picked = st.segmented_control(
+        t("q.section"), ids, default=ids[0], key=f"q_section_{line}",
+        format_func=lambda sid: labels[sid], label_visibility="collapsed") or ids[0]
 
-    tab_main, tab_side, tab_daily, tab_all = st.tabs(
-        [t("q.tab.main"), t("q.tab.side"), t("q.tab.daily"), t("q.tab.all")])
-    with tab_main:
+    _section(doc, catalog, line, picked, achievements, recipes)
+
+
+@st.fragment
+def _section(doc: SaveDoc, catalog: gamedata.Catalog, line: str, picked: str,
+             achievements, recipes) -> None:
+    """分区正文单独成片：拖动滑块、切任务节点只重跑本区。"""
+    if picked == "main":
         _mainline(doc, catalog)
-    with tab_side:
+    elif picked == "chain":
+        _chain(doc, catalog)
+    elif picked == "side":
         _side(doc, catalog, line)
-    with tab_daily:
+    elif picked == "daily":
         _daily(doc, catalog)
-    with tab_all:
+    else:
         _all_progress(doc, achievements, recipes)
 
 
@@ -297,6 +306,10 @@ def _quest_detail(doc: SaveDoc, quest: gamedata.QuestDef, line: str) -> None:
 # 任务链（仅旧线）
 # --------------------------------------------------------------------------- #
 
+def _pick_chain_node(title: str) -> None:
+    st.session_state["q_chain_node"] = title
+
+
 def _chain(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
     forest = questops.old_forest(catalog)
     if not forest.defs:
@@ -322,10 +335,9 @@ def _chain(doc: SaveDoc, catalog: gamedata.Catalog) -> None:
             quest = forest.defs[title]
             step = doc.get(schema.quest_key("old", "quest", title), "#start")
             c1, c2, c3, c4 = st.columns(widths, vertical_alignment="center")
-            if c1.button(labels[title], key=f"q_chain_pick_{doc.widget_id}_{title}",
-                         type="primary" if title == selected else "tertiary"):
-                st.session_state["q_chain_node"] = title
-                st.rerun()
+            c1.button(labels[title], key=f"q_chain_pick_{doc.widget_id}_{title}",
+                      type="primary" if title == selected else "tertiary",
+                      on_click=_pick_chain_node, args=(title,))
             c2.markdown(f'<div class="bs-chain-cell">{quest.npc}</div>', unsafe_allow_html=True)
             c3.markdown(f'<div class="bs-chain-cell">{display_value(step)}</div>',
                         unsafe_allow_html=True)

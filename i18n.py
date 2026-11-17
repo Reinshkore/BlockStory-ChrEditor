@@ -27,7 +27,6 @@ S: dict[str, tuple[str, str]] = {
     # ── 应用与导航 ───────────────────────────────────────────────
     "app.title": ("Save Editor", "存档编辑器"),
     "app.subtitle": ("Block Story", "Block Story"),
-    "app.version": ("v14.5.3", "v14.5.3"),
     "nav.overview": ("Overview", "概览"),
     "nav.fields": ("Fields", "字段"),
     "nav.items": ("Items", "物品与容器"),
@@ -267,6 +266,7 @@ S: dict[str, tuple[str, str]] = {
     # ── 任务 ─────────────────────────────────────────────────────
     "q.title": ("Quests & Achievements", "任务与成就"),
     "q.sub": ("Quick progress presets plus the complete raw progress list.", "快捷调整进度，也可查看完整的原始进度。"),
+    "q.section": ("Section", "分区"),
     "q.tab.main": ("Main story", "主线"),
     "q.tab.side": ("Side quests", "支线"),
     "q.tab.daily": ("Daily quests", "日常"),

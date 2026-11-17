@@ -78,30 +78,29 @@ CSS = """
 
   /* 按钮紧凑些 */
   .stButton button, .stDownloadButton button{padding:.25rem .7rem;min-height:2.1rem;font-size:13px}
-  .stButton button[kind="primary"]{font-weight:600}
+  .stButton button[data-testid="stBaseButton-primary"]{font-weight:600}
 
   /* 分段控件 */
   div[data-testid="stSegmentedControl"] button{padding:.15rem .5rem;font-size:12.5px;min-height:1.7rem}
 
-  /* 侧栏导航：按钮伪装成列表项 */
-  div[class*="st-key-nav_on_"] button, div[class*="st-key-nav_off_"] button{
+  /* 侧栏导航：按钮伪装成列表项。key 固定为 nav_<page>，选中态用 kind="primary" 区分。 */
+  div[class*="st-key-nav_"] button{
     display:flex!important;justify-content:flex-start!important;text-align:left;
     padding:.28rem .55rem;min-height:1.9rem;
     border:0!important;border-left:2px solid transparent!important;
     border-radius:6px!important;background:transparent!important;
     color:var(--bs-muted);font-size:13.5px;font-weight:500;
   }
-  div[class*="st-key-nav_on_"] button > div,
-  div[class*="st-key-nav_off_"] button > div{
+  div[class*="st-key-nav_"] button > div{
     width:100%;justify-content:flex-start!important;display:flex}
-  div[class*="st-key-nav_on_"] button p, div[class*="st-key-nav_off_"] button p{
+  div[class*="st-key-nav_"] button p{
     text-align:left;width:100%;font-size:13.5px;margin:0}
-  div[class*="st-key-nav_off_"] button:hover{
+  div[class*="st-key-nav_"] button[data-testid="stBaseButton-secondary"]:hover{
     background:rgba(255,255,255,.05)!important;color:var(--bs-text)}
-  div[class*="st-key-nav_on_"] button{
+  div[class*="st-key-nav_"] button[data-testid="stBaseButton-primary"]{
     background:rgba(240,161,42,.13)!important;color:var(--bs-text);
     border-left-color:#f0a12a!important;font-weight:600}
-  div[class*="st-key-nav_on_"] button p{font-weight:600}
+  div[class*="st-key-nav_"] button[data-testid="stBaseButton-primary"] p{font-weight:600}
 
   /* 物品格子：按钮做成卡片 */
   div[class*="st-key-slot_"] button, div[class*="st-key-empt_"] button{
@@ -131,7 +130,7 @@ CSS = """
   .st-key-q_chain_list [data-testid="stElementContainer"]{margin:0}
   .st-key-q_chain_list button{min-height:1.45rem!important;height:1.45rem;padding:0 .3rem!important;
     font-size:12.5px;font-weight:400;line-height:1.45rem}
-  .st-key-q_chain_list button[kind="primary"]{font-weight:600}
+  .st-key-q_chain_list button[data-testid="stBaseButton-primary"]{font-weight:600}
   .bs-chain-head{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--bs-muted)}
   .bs-chain-cell{font-size:12.5px;color:var(--bs-muted);line-height:1.45rem;white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis}

@@ -184,6 +184,50 @@ def test_questline_plan() -> None:
     check("旧线统计", stats == {"total": 4, "done": 1, "active": 1, "start": 2}, str(stats))
 
 
+def test_recipe_aliases() -> None:
+    """14.5.5 把 Sunshard Wizard / Sunshard Paula 合并成 Sunshard。
+    旧存档里的历史键在回退任务时必须一起撤销，否则游戏仍按别名解锁。"""
+    check("别名映射", schema.recipe_names("Sunshard") ==
+          ("Sunshard", "Sunshard Wizard", "Sunshard Paula"))
+    check("反查别名", schema.recipe_names("Sunshard Paula")[0] == "Sunshard")
+
+    tutorial = gamedata.QuestDef("Tutorial", "Wizard", False, steps=("#start", "begin"))
+    finale = gamedata.QuestDef("The Grand Finale", "Wizard", False,
+                               steps=("#start", "finale"), recipes=("Sunshard",))
+    chain = [tutorial, finale]
+    catalog = gamedata.Catalog(quests={"Tutorial": tutorial, "The Grand Finale": finale},
+                               quest_recipes={"The Grand Finale": ("Sunshard",)})
+
+    legacy = model.SaveDoc.from_dict({
+        "charName": "Tester",
+        "Quest: Tutorial": "#end",
+        "Quest: The Grand Finale": "#end",
+        "Recipe: Sunshard Wizard": 1,
+        "Recipe: Sunshard Paula": 1,
+        "Recipe: Arrow": 1,
+    })
+    plan = questops.build_mainline_plan(legacy, chain, 1, catalog=catalog, sync_recipes=True)
+    check("回退删除历史配方键",
+          "Recipe: Sunshard Wizard" not in plan.values
+          and "Recipe: Sunshard Paula" not in plan.values, str(plan.values))
+    check("回退不动无关配方", plan.values.get("Recipe: Arrow") == 1)
+
+    done = model.SaveDoc.from_dict({
+        "charName": "Tester",
+        "Quest: Tutorial": "#end",
+        "Quest: The Grand Finale": "#start",
+    })
+    plan = questops.build_mainline_plan(done, chain, 2, catalog=catalog, sync_recipes=True)
+    check("完成时写当前配方名", plan.values.get("Recipe: Sunshard") == 1)
+    check("完成时不伪造历史键", "Recipe: Sunshard Wizard" not in plan.values)
+
+    reset_plan = reset_mod.build_plan(legacy, reset_mod.OP_QUESTS,
+                                      sync_quest_recipes=True, catalog=catalog)
+    check("重置任务同样清历史配方键",
+          "Recipe: Sunshard Wizard" not in reset_plan.values
+          and "Recipe: Sunshard Paula" not in reset_plan.values, str(reset_plan.values))
+
+
 def test_model_and_validate() -> None:
     doc = _doc()
     rows = doc.quests()
@@ -245,6 +289,7 @@ def main() -> int:
     for title, fn in (("任务线基础", test_schema), ("目录", test_catalog),
                       ("森林", test_forest), ("单任务计划", test_quest_plan),
                       ("链路计划", test_chain_plan), ("任务线切换", test_questline_plan),
+                      ("配方别名", test_recipe_aliases),
                       ("模型与校验", test_model_and_validate), ("重置", test_reset),
                       ("本机目录", test_installed_catalog)):
         print(f"\n[{title}]")

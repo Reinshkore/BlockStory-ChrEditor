@@ -6,6 +6,7 @@ import i18n
 import reset as reset_mod
 import schema
 import storage
+import uistate
 import validate
 from i18n import t
 from ui import components as C
@@ -70,16 +71,14 @@ def render(doc, issues) -> None:
         with st.container(border=True):
             st.metric(t("ov.checkErr"), counts.get("error", 0))
             st.caption(t("ov.checkErrHint"))
-            if st.button(t("nav.fields"), key="ov_goto_err", width="stretch"):
-                st.session_state.nav = "fields"
-                st.rerun()
+            st.button(t("nav.fields"), key="ov_goto_err", width="stretch",
+                      on_click=uistate.goto, args=("fields",))
     with k2:
         with st.container(border=True):
             st.metric(t("ov.checkWarn"), counts.get("warn", 0))
             st.caption(t("ov.checkWarnHint"))
-            if st.button(t("nav.fields"), key="ov_goto_warn", width="stretch"):
-                st.session_state.nav = "fields"
-                st.rerun()
+            st.button(t("nav.fields"), key="ov_goto_warn", width="stretch",
+                      on_click=uistate.goto, args=("fields",))
     with k3:
         with st.container(border=True):
             st.metric(t("ov.checkUnknown"), unknown)
@@ -103,15 +102,12 @@ def render(doc, issues) -> None:
     with right:
         with st.container(border=True):
             st.caption(t("ov.fastest"))
-            if st.button(t("nav.tidy"), width="stretch", key="ov_tidy"):
-                st.session_state.nav = "tidy"
-                st.rerun()
-            if st.button(t("nav.reset"), width="stretch", key="ov_reset"):
-                st.session_state.nav = "reset"
-                st.rerun()
-            if st.button(t("nav.save"), width="stretch", key="ov_save"):
-                st.session_state.nav = "save"
-                st.rerun()
+            st.button(t("nav.tidy"), width="stretch", key="ov_tidy",
+                      on_click=uistate.goto, args=("tidy",))
+            st.button(t("nav.reset"), width="stretch", key="ov_reset",
+                      on_click=uistate.goto, args=("reset",))
+            st.button(t("nav.save"), width="stretch", key="ov_save",
+                      on_click=uistate.goto, args=("save",))
 
 
 def _rerender_snapshot(doc, level, purchased, unspent) -> dict[str, Any]:

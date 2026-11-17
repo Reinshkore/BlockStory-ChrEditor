@@ -20,6 +20,18 @@ class _Values(dict):
         self.owner = owner
         super().__init__(*args, **kwargs)
 
+    def __copy__(self):
+        """副本是脱离代理的普通字典。
+
+        `copy.copy` 默认走 `__reduce_ex__`，会把每个键重新 `__setitem__` 一遍，
+        每写一个键就触发一次全量 `_sync()`（1654 键 ≈ 11 秒）。副本只用于计算，
+        不需要回写，所以直接返回普通 dict。
+        """
+        return dict(self)
+
+    def __deepcopy__(self, memo):
+        return copy.deepcopy(dict(self), memo)
+
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
         self.owner._sync()
@@ -201,8 +213,10 @@ class ModeViewDoc(SaveDoc):
             new_order.append(key)
         if not inserted:
             new_order.extend(mapped_mode_order)
-        new_order.extend(key for key in mapped_values if key not in new_order and key not in mapped_set)
+        placed = set(new_order)
+        new_order.extend(key for key in mapped_values
+                         if key not in placed and key not in mapped_set)
         # mapped_set 中的键已经按视图顺序插入；共享键和新增键只去重，不重复追加。
-        seen = set()
+        seen: set[str] = set()
         self.parent.order = [key for key in new_order if not (key in seen or seen.add(key))]
         self.parent._pets = None  # noqa: SLF001
